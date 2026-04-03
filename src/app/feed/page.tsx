@@ -12,9 +12,15 @@ export default async function FeedPage() {
 
   const userId = session.user.id;
 
-  // One-time cleanup: fix bad category values
+  // Cleanup: fix bad category values (OPTIONAL text, empty strings, etc.)
   await prisma.photo.updateMany({
-    where: { category: { contains: "OPTIONAL" } },
+    where: {
+      OR: [
+        { category: { contains: "OPTIONAL" } },
+        { category: { contains: " " } },
+        { category: "" },
+      ],
+    },
     data: { category: null },
   });
 
@@ -29,25 +35,15 @@ export default async function FeedPage() {
     },
   });
 
-  const feed = photos.map((p) => {
-    const humanRatingsAll = prisma.humanRating
-      .findMany({ where: { photoId: p.id }, select: { score: true } })
-      .then((rs) =>
-        rs.length > 0
-          ? rs.reduce((s, r) => s + r.score, 0) / rs.length
-          : null
-      );
-
-    return {
-      id: p.id,
-      imageUrl: p.imageUrl,
-      username: p.user.username,
-      category: p.category,
-      aiScore: p.aiScore,
-      isOwner: p.userId === userId,
-      hasRated: p.humanRatings.length > 0,
-    };
-  });
+  const feed = photos.map((p) => ({
+    id: p.id,
+    imageUrl: p.imageUrl,
+    username: p.user.username,
+    category: p.category,
+    aiScore: p.aiScore,
+    isOwner: p.userId === userId,
+    hasRated: p.humanRatings.length > 0,
+  }));
 
   // Resolve human scores in parallel
   const humanScores = await Promise.all(

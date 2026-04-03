@@ -46,6 +46,11 @@ interface ScoreResponse {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("ANTHROPIC_API_KEY not set");
+      return NextResponse.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -142,6 +147,8 @@ Respond ONLY with valid JSON matching this exact schema:
       };
     }
 
+    console.log(`[Score] Calling Anthropic API for photo ${photoId}, agents: ${agents.length}, image type: ${photo.imageUrl.startsWith("data:") ? "base64" : "url"}`);
+
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
@@ -156,6 +163,8 @@ Respond ONLY with valid JSON matching this exact schema:
       ],
       system: systemPrompt,
     });
+
+    console.log(`[Score] Anthropic response received. Tokens: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`);
 
     // Extract text from response
     const textBlock = response.content.find((b) => b.type === "text");
@@ -182,6 +191,8 @@ Respond ONLY with valid JSON matching this exact schema:
         { status: 502 }
       );
     }
+
+    console.log(`[Score] Parsed response: aiScore=${parsed.score ?? "N/A"}, category=${parsed.category}, agents=${parsed.agent_scores?.length ?? 0}, nsfw=${parsed.nsfw}`);
 
     // Compute energy cost in joules
     const inputTokens = response.usage.input_tokens;
@@ -271,6 +282,8 @@ Respond ONLY with valid JSON matching this exact schema:
         category: detectedCategory,
       },
     });
+
+    console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
 
     // Deduct scoring cost from user
     await prisma.user.update({

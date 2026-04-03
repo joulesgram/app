@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PHOTO_SCORE_KJ } from "@/lib/constants";
 
-export async function createPhoto(imageUrl: string, category: string | null) {
+export async function createPhoto(imageUrl: string, _category: string | null) {
   const session = await auth();
   if (!session?.user?.id) redirect("/");
 
@@ -20,11 +20,12 @@ export async function createPhoto(imageUrl: string, category: string | null) {
     );
   }
 
+  // Category is always null here — AI scoring detects it
   const photo = await prisma.photo.create({
     data: {
       imageUrl,
       userId: session.user.id,
-      category,
+      category: null,
     },
   });
 

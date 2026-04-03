@@ -124,8 +124,8 @@ export default function PhotoView({
           alt={`Photo by ${username}`}
           className="w-full h-full object-cover"
         />
-        {category && (
-          <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-xs text-gray-300 px-2.5 py-1 rounded-full">
+        {category && /^[a-z]+$/i.test(category) && (
+          <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-xs text-cyan-400 uppercase tracking-wider px-2.5 py-1 rounded-full">
             {category}
           </span>
         )}
