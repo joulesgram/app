@@ -20,10 +20,10 @@ body {
 
 /* Font families */
 .font-heading {
-  font-family: 'Bebas Neue', var(--font-body), sans-serif;
+  font-family: 'Bebas Neue', 'DM Sans', sans-serif;
 }
 .font-label {
-  font-family: var(--font-mono), monospace;
+  font-family: 'Space Mono', monospace;
 }
 
 /* Horizontal scroll hide scrollbar */
