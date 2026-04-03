@@ -5,6 +5,7 @@ import Logo from "@/components/Logo";
 import PhotoCard from "@/components/PhotoCard";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
+import { VALID_CATEGORIES } from "@/lib/constants";
 
 export default async function FeedPage() {
   const session = await auth();
@@ -12,14 +13,11 @@ export default async function FeedPage() {
 
   const userId = session.user.id;
 
-  // Cleanup: fix bad category values (OPTIONAL text, empty strings, etc.)
+  // Cleanup: null out any category not in the valid list
   await prisma.photo.updateMany({
     where: {
-      OR: [
-        { category: { contains: "OPTIONAL" } },
-        { category: { contains: " " } },
-        { category: "" },
-      ],
+      category: { notIn: [...VALID_CATEGORIES] },
+      NOT: { category: null },
     },
     data: { category: null },
   });

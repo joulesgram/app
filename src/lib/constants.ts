@@ -16,6 +16,18 @@ export const SIGNUP_TIERS = [
   { max: Infinity, reward: 50, label: "Standard" },
 ] as const;
 
+// --- Photo categories ---
+export const VALID_CATEGORIES = [
+  "landscape",
+  "food",
+  "portrait",
+  "architecture",
+  "street",
+  "nature",
+  "abstract",
+  "night",
+] as const;
+
 // --- AI models ---
 export const MODELS = [
   { id: "claude", label: "Claude", icon: "🟠" },

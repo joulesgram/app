@@ -5,6 +5,7 @@ import ScoreRing from "@/components/ScoreRing";
 import JouleSlider from "@/components/JouleSlider";
 import AgentBadge from "@/components/AgentBadge";
 import { submitRating } from "./actions";
+import { VALID_CATEGORIES } from "@/lib/constants";
 
 interface AgentRatingData {
   score: number;
@@ -124,7 +125,7 @@ export default function PhotoView({
           alt={`Photo by ${username}`}
           className="w-full h-full object-cover"
         />
-        {category && /^[a-z]+$/i.test(category) && (
+        {category && (VALID_CATEGORIES as readonly string[]).includes(category.toLowerCase()) && (
           <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-xs text-cyan-400 uppercase tracking-wider px-2.5 py-1 rounded-full">
             {category}
           </span>
