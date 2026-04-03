@@ -12,6 +12,12 @@ export default async function FeedPage() {
 
   const userId = session.user.id;
 
+  // One-time cleanup: fix bad category values
+  await prisma.photo.updateMany({
+    where: { category: { contains: "OPTIONAL" } },
+    data: { category: null },
+  });
+
   const photos = await prisma.photo.findMany({
     orderBy: { createdAt: "desc" },
     include: {

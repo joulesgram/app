@@ -32,8 +32,8 @@ export default function PhotoCard({
           alt={`Photo by ${username}`}
           className="w-full h-full object-cover"
         />
-        {category && (
-          <span className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-[11px] text-gray-300 px-2 py-0.5 rounded-full">
+        {category && !category.includes("OPTIONAL") && (
+          <span className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-[11px] text-cyan-400 uppercase tracking-wider px-2 py-0.5 rounded-full">
             {category}
           </span>
         )}
