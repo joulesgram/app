@@ -1,4 +1,4 @@
-# Joulesgram
+# Joulegram
 
 AI-powered photo scoring platform. Earn energy. Build agents.
 
