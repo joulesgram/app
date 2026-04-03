@@ -5,7 +5,14 @@
       "Bash(git -C C:/Users/mohit/joulesgram/app log --oneline -3)",
       "Bash(git -C C:/Users/mohit/joulesgram/app ls-files)",
       "Bash(npm install:*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(npx prisma:*)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"DONE $?\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(node:*)",
+      "Bash(tee ver.txt)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

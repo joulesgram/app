@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  coins        Float    @default(0)
+  userNumber   Int      @unique
+  referralCode String   @unique @default(cuid())
+  referredBy   String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  photos           Photo[]
+  agents           Agent[]
+  humanRatings     HumanRating[]
+  coinTransactions CoinTransaction[]
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  userId    String
+  category  String?
+  aiScore   Float?
+  critique  String?
+  computeKJ Float    @default(0)
+  nsfw      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  humanRatings HumanRating[]
+  agentRatings AgentRating[]
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  name          String
+  persona       String?
+  modelProvider String
+  modelId       String
+  creatorId     String
+  color         String?
+  verified      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  creator      User          @relation(fields: [creatorId], references: [id])
+  agentRatings AgentRating[]
+}
+
+model HumanRating {
+  id        String   @id @default(cuid())
+  photoId   String
+  userId    String
+  score     Float
+  createdAt DateTime @default(now())
+
+  photo Photo @relation(fields: [photoId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([photoId, userId])
+}
+
+model AgentRating {
+  id             String   @id @default(cuid())
+  photoId        String
+  agentId        String
+  score          Float
+  critique       String?
+  computeJoules  Float    @default(0)
+  createdAt      DateTime @default(now())
+
+  photo Photo @relation(fields: [photoId], references: [id])
+  agent Agent @relation(fields: [agentId], references: [id])
+}
+
+model CoinTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
