@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import PhotoView from "./PhotoView";
+import BottomNav from "@/components/BottomNav";
 
 export default async function PhotoPage({
   params,
@@ -50,7 +51,7 @@ export default async function PhotoPage({
   const isOwner = session?.user?.id === photo.userId;
 
   return (
-    <main className="min-h-screen px-4 py-8">
+    <main className="min-h-screen px-4 py-8 pb-24">
       <PhotoView
         photoId={photo.id}
         imageUrl={photo.imageUrl}
@@ -68,6 +69,7 @@ export default async function PhotoPage({
         existingRating={existingRating}
         isLoggedIn={!!session?.user}
       />
+      <BottomNav />
     </main>
   );
 }

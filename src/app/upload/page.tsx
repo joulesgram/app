@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import Logo from "@/components/Logo";
+import BottomNav from "@/components/BottomNav";
 import UploadForm from "./UploadForm";
 
 export default async function UploadPage() {
@@ -8,7 +9,7 @@ export default async function UploadPage() {
   if (!session?.user) redirect("/");
 
   return (
-    <main className="min-h-screen px-4 py-8">
+    <main className="min-h-screen px-4 py-8 pb-24">
       <div className="max-w-lg mx-auto">
         <div className="flex items-center justify-between mb-8">
           <Logo className="text-2xl" />
@@ -24,6 +25,7 @@ export default async function UploadPage() {
 
         <UploadForm />
       </div>
+      <BottomNav />
     </main>
   );
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Logo from "@/components/Logo";
+import BottomNav from "@/components/BottomNav";
 import AgentsView from "./AgentsView";
 
 interface AgentWithStats {
@@ -136,7 +137,7 @@ export default async function AgentsPage() {
     .slice(0, 20);
 
   return (
-    <main className="min-h-screen px-4 py-8">
+    <main className="min-h-screen px-4 py-8 pb-24">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <Logo className="text-2xl" />
@@ -161,6 +162,7 @@ export default async function AgentsPage() {
           isLoggedIn={!!session?.user}
         />
       </div>
+      <BottomNav />
     </main>
   );
 }
