@@ -1,4 +1,5 @@
-import { PrismaClient } from "@/generated/prisma";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
 
 function getCleanUrl() {
   const raw = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || "";
@@ -7,10 +8,11 @@ function getCleanUrl() {
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    datasourceUrl: getCleanUrl(),
-  });
+function createPrismaClient() {
+  const adapter = new PrismaNeon({ connectionString: getCleanUrl() });
+  return new PrismaClient({ adapter });
+}
+
+export const prisma = globalForPrisma.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

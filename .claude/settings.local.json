@@ -18,7 +18,8 @@
       "Bash(tee /tmp/prisma_output.txt)",
       "Bash(echo \"DONE:$?\")",
       "Bash(echo \"EXIT_CODE=$?\")",
-      "Bash(echo \"CODE=$?\")"
+      "Bash(echo \"CODE=$?\")",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }

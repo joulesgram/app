@@ -1,7 +1,20 @@
-export default function Logo({ className = "" }: { className?: string }) {
+export default function Logo({
+  className = "",
+  size,
+  glow,
+}: {
+  className?: string;
+  size?: number;
+  glow?: boolean;
+}) {
+  const style = size ? { fontSize: `${size}px` } : undefined;
+
   return (
     <span
-      className={`inline-flex items-center font-bold tracking-tight select-none ${className}`}
+      className={`inline-flex items-center font-bold tracking-tight select-none ${
+        glow ? "drop-shadow-[0_0_24px_rgba(0,212,255,0.5)]" : ""
+      } ${className}`}
+      style={style}
     >
       <span className="text-blue">JOUL</span>
       <svg
