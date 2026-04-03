@@ -1,13 +1,12 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PHOTO_SCORE_KJ } from "@/lib/constants";
 
 export async function createPhoto(imageUrl: string, _category: string | null) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/");
+  if (!session?.user?.id) throw new Error("Not authenticated");
 
   // Check user has enough coins for scoring
   const user = await prisma.user.findUnique({
