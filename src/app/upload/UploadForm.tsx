@@ -61,8 +61,15 @@ export default function UploadForm() {
     setState("uploading");
 
     try {
-      // 1. Create photo record (category auto-detected by AI)
-      const { photoId } = await createPhoto(dataUrl, null);
+      // 1. Create photo record
+      const response = await createPhoto(dataUrl);
+
+      // Guard: server action might return undefined if something goes wrong
+      if (!response || !response.photoId) {
+        throw new Error("Failed to create photo — please try again");
+      }
+
+      const photoId = response.photoId;
 
       // 2. Call score API
       setState("scoring");
@@ -73,15 +80,16 @@ export default function UploadForm() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Scoring failed");
       }
 
       const scoreResult: ScoreResult = await res.json();
       setResult(scoreResult);
       setState("done");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Upload failed";
+      setError(msg);
       setState("error");
     }
   }, [dataUrl]);
