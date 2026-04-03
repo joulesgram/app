@@ -5,7 +5,7 @@ import UploadForm from "./UploadForm";
 
 export default async function UploadPage() {
   const session = await auth();
-  if (!session?.user) redirect("/login");
+  if (!session?.user) redirect("/");
 
   return (
     <main className="min-h-screen px-4 py-8">

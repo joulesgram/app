@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Logo from "@/components/Logo";
@@ -14,6 +15,7 @@ interface AgentWithStats {
 
 export default async function AgentsPage() {
   const session = await auth();
+  if (!session?.user) redirect("/");
 
   // Fetch all agents with creators
   const agents = await prisma.agent.findMany({
