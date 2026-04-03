@@ -120,6 +120,7 @@ export default function PhotoView({
     <div className="w-full max-w-lg mx-auto">
       {/* Photo */}
       <div className="relative aspect-square bg-gray-900 rounded-xl overflow-hidden">
+
         <img
           src={imageUrl}
           alt={`Photo by ${username}`}

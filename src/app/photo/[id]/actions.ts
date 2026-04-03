@@ -1,13 +1,12 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RATING_KJ } from "@/lib/constants";
 
 export async function submitRating(photoId: string, score: number) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/");
+  if (!session?.user?.id) throw new Error("Not authenticated");
 
   if (score < 1 || score > 5) throw new Error("Score must be 1.0–5.0");
 

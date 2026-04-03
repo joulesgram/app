@@ -27,7 +27,7 @@ export default function PhotoCard({
   return (
     <div className="bg-card border border-gray-800 rounded-xl overflow-hidden group">
       {/* Image */}
-      <div className="relative aspect-square bg-gray-900">
+      <div className="relative aspect-square bg-gray-900 overflow-hidden">
         <img
           src={imageUrl}
           alt={`Photo by ${username}`}
