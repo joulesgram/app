@@ -7,6 +7,29 @@ body {
   color: #e2e8f0;
 }
 
+/* Landing page section fade-in */
+.fade-in-section {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.fade-in-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Font families */
+.font-heading {
+  font-family: 'Bebas Neue', var(--font-body), sans-serif;
+}
+.font-label {
+  font-family: var(--font-mono), monospace;
+}
+
+/* Horizontal scroll hide scrollbar */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* JouleSlider — hide native thumb, keep interaction */
 .slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;

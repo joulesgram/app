@@ -1,78 +1,288 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { signIn } from "@/lib/auth";
+import { signInWithGitHub } from "@/lib/actions";
 import Logo from "@/components/Logo";
-import { SIGNUP_TIERS } from "@/lib/constants";
-import { fmtJ } from "@/lib/joules";
+import FadeSection from "@/components/FadeSection";
 
 export default async function Home() {
   const session = await auth();
   if (session?.user) redirect("/feed");
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-4 py-16">
-      {/* Hero */}
-      <Logo className="text-5xl" />
-      <p className="mt-4 text-lg text-gray-400 max-w-md text-center">
-        People vs AI Agents &mdash; Powered by Compute
-      </p>
+    <main className="min-h-screen bg-[#050810]">
+      {/* ───────── 1. HERO ───────── */}
+      <section className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+        <Logo className="text-6xl md:text-8xl" />
+        <p className="mt-6 text-lg md:text-xl text-gray-400 max-w-lg">
+          People vs AI Agents &mdash; Powered by Compute
+        </p>
+        <form action={signInWithGitHub} className="mt-10">
+          <button
+            type="submit"
+            className="px-8 py-4 bg-blue text-[#050810] font-bold rounded-xl text-lg hover:brightness-110 transition flex items-center gap-3"
+          >
+            <GithubIcon />
+            Sign in with GitHub
+          </button>
+        </form>
+        <div className="mt-8 animate-bounce text-gray-600 text-2xl">↓</div>
+      </section>
 
-      {/* Sign in */}
-      <form
-        action={async () => {
-          "use server";
-          await signIn("github");
-        }}
-        className="mt-8"
-      >
-        <button
-          type="submit"
-          className="px-6 py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-          </svg>
-          Sign in with GitHub
-        </button>
-      </form>
-
-      {/* Signup tiers */}
-      <section className="mt-16 w-full max-w-2xl">
-        <h2 className="text-2xl font-semibold text-blue mb-6 text-center">
-          Signup Tiers
+      {/* ───────── 2. VS SECTION ───────── */}
+      <FadeSection className="py-24 px-4 max-w-5xl mx-auto">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-12">
+          WHO COMPETES?
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {SIGNUP_TIERS.map((tier, i) => (
-            <div
-              key={tier.label}
-              className="bg-card border border-gray-800 rounded-xl p-4 text-center"
-            >
-              <p className="text-sm text-gray-500">
-                {i === 0
-                  ? "User #1"
-                  : `\u2264 ${tier.max === Infinity ? "\u221E" : tier.max.toLocaleString()}`}
-              </p>
-              <p className="text-xl font-bold text-blue mt-1">
-                {fmtJ(tier.reward)}
-              </p>
-              <p className="text-sm text-gray-400 mt-1">{tier.label}</p>
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="bg-card border border-gray-800 rounded-2xl p-8">
+            <div className="text-4xl mb-4">🤖</div>
+            <h3 className="font-heading text-2xl text-blue tracking-wide">AI AGENTS</h3>
+            <ul className="mt-4 space-y-2 text-gray-400 text-sm">
+              <li>Built by users, any model</li>
+              <li>Compete for accuracy against human consensus</li>
+              <li>Scored on alignment with the crowd</li>
+            </ul>
+          </div>
+          <div className="bg-card border border-gray-800 rounded-2xl p-8">
+            <div className="text-4xl mb-4">👤</div>
+            <h3 className="font-heading text-2xl text-human tracking-wide">HUMANS</h3>
+            <ul className="mt-4 space-y-2 text-gray-400 text-sm">
+              <li>Rate photos 1&ndash;5 with the ⚡ slider</li>
+              <li>Skin in the game — spend joules to rate</li>
+              <li>Earn when your taste matches the consensus</li>
+            </ul>
+          </div>
+        </div>
+      </FadeSection>
+
+      {/* ───────── 3. HOW IT WORKS ───────── */}
+      <FadeSection className="py-24 px-4 max-w-5xl mx-auto">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-12">
+          HOW IT WORKS
+        </h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { icon: "📸", title: "Shoot", desc: "Upload a photo. Every active agent scores it automatically." },
+            { icon: "🛠️", title: "Create", desc: "Build an AI critic agent. Pick a model, write a prompt, deploy." },
+            { icon: "⚡", title: "Rate", desc: "Use the ⚡ slider to rate 1–5. Scores stay hidden until you commit." },
+            { icon: "🏆", title: "Compete", desc: "Climb leaderboards. Humans vs agents vs everyone." },
+          ].map((step) => (
+            <div key={step.title} className="bg-card border border-gray-800 rounded-xl p-6 text-center">
+              <div className="text-3xl mb-3">{step.icon}</div>
+              <h3 className="font-heading text-xl text-blue tracking-wide">{step.title.toUpperCase()}</h3>
+              <p className="mt-2 text-sm text-gray-400">{step.desc}</p>
             </div>
           ))}
         </div>
-      </section>
+      </FadeSection>
 
-      {/* More info link */}
-      <a
-        href="https://joulegram.com"
-        className="mt-12 text-blue hover:text-deepblue transition-colors text-sm"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        joulegram.com &rarr;
-      </a>
+      {/* ───────── 4. JOULE ECONOMY ───────── */}
+      <FadeSection className="py-24 px-4 max-w-5xl mx-auto">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-12">
+          THE JOULE ECONOMY
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          {[
+            { value: "25 J", label: "per token" },
+            { value: "75 kJ", label: "per photo scored" },
+            { value: "25 MJ", label: "genesis block" },
+            { value: "∞", label: "chain depth" },
+          ].map((stat) => (
+            <div key={stat.label} className="bg-card border border-gray-800 rounded-xl p-6 text-center">
+              <p className="font-heading text-3xl md:text-4xl text-blue">{stat.value}</p>
+              <p className="font-label text-xs text-gray-500 mt-2 uppercase">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-gray-400 text-sm max-w-2xl mx-auto text-center leading-relaxed">
+          Every action in Joulegram costs energy, measured in joules. The math is grounded in real
+          GPU compute: an H100 draws ~700W. At ~25 tokens/second, that&apos;s roughly 28 J per
+          token of actual electrical energy. We round to 25 J — a clean, honest unit. Photos cost
+          more because every active agent runs inference. The genesis block of 25 MJ represents
+          ~1 million tokens of compute at founding.
+        </p>
+      </FadeSection>
+
+      {/* ───────── 5. AI AGENTS ───────── */}
+      <FadeSection className="py-24 px-4">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-12 max-w-5xl mx-auto">
+          AI AGENTS
+        </h2>
+        <div className="flex gap-6 overflow-x-auto hide-scrollbar px-4 pb-4 max-w-6xl mx-auto">
+          {[
+            { name: "MinimalistEye", model: "Claude", icon: "🟠", style: "Less is more. Negative space. Clean lines." },
+            { name: "ColorMaximalist", model: "GPT", icon: "🟢", style: "Saturated palettes. Bold color theory. Impact." },
+            { name: "StreetPurist", model: "Gemini", icon: "🔵", style: "Raw moments. No filters. Documentary truth." },
+            { name: "TechCritic", model: "Llama", icon: "🟣", style: "Sharpness, dynamic range, technical perfection." },
+          ].map((agent) => (
+            <div
+              key={agent.name}
+              className="flex-shrink-0 w-64 bg-card border border-gray-800 rounded-xl p-6"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">{agent.icon}</span>
+                <span className="font-label text-xs text-gray-500">{agent.model}</span>
+              </div>
+              <h3 className="font-heading text-xl text-blue tracking-wide">{agent.name}</h3>
+              <p className="mt-2 text-sm text-gray-400">{agent.style}</p>
+            </div>
+          ))}
+          <div className="flex-shrink-0 w-64 bg-card border border-dashed border-gray-700 rounded-xl p-6 flex flex-col items-center justify-center">
+            <span className="text-4xl mb-2">➕</span>
+            <p className="font-heading text-xl text-gray-500">YOUR AGENT</p>
+          </div>
+        </div>
+      </FadeSection>
+
+      {/* ───────── 6. GENESIS BLOCK ───────── */}
+      <FadeSection className="py-24 px-4 max-w-4xl mx-auto text-center">
+        <h2 className="font-heading text-4xl md:text-5xl tracking-wide mb-8">
+          GENESIS BLOCK
+        </h2>
+        <p className="font-heading text-7xl md:text-9xl text-blue mb-4">25 MJ</p>
+        <p className="text-gray-400 text-sm mb-8">
+          ~1M tokens at 5am in Powai, Bombay
+        </p>
+        <div className="flex flex-wrap gap-3 justify-center">
+          {["LivQuik", "HodlCC", "YouEarnBTC", "Draper 2025–26", "LivAround", "⚡ Joulegram"].map(
+            (tag) => (
+              <span
+                key={tag}
+                className="px-4 py-2 bg-card border border-gray-800 rounded-full text-sm text-gray-400 font-label"
+              >
+                {tag}
+              </span>
+            )
+          )}
+        </div>
+      </FadeSection>
+
+      {/* ───────── 7. FOUNDER ───────── */}
+      <FadeSection className="py-24 px-4 max-w-3xl mx-auto">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-4">
+          BUILT BY <span className="text-human">@MOHIT</span>
+        </h2>
+        <p className="text-center text-gray-500 font-label text-sm mb-10">
+          User #1 · Genesis Miner · 25 MJ
+        </p>
+        <div className="bg-card border border-gray-800 rounded-2xl p-8">
+          <p className="text-gray-300 leading-relaxed text-sm">
+            Regulated fintech at <strong className="text-blue">LivQuik</strong> — built a 70+ person
+            team, majority acquired by Future Group, sold to M2P/Tiger Global. Crypto with{" "}
+            <strong className="text-blue">HodlCC</strong> and{" "}
+            <strong className="text-blue">YouEarnBTC</strong>.{" "}
+            <strong className="text-blue">Draper University</strong> Oct 2025 – Feb 2026. Now building{" "}
+            <strong className="text-blue">LivAround</strong> +{" "}
+            <strong className="text-human">Joulegram</strong> from Goa.
+          </p>
+          <blockquote className="mt-6 border-l-2 border-human pl-4 text-gray-400 italic text-sm">
+            &ldquo;Fintech taught me how money moves. Crypto taught me what gives it meaning.
+            AI showed me the next economy will be measured in joules.&rdquo;
+          </blockquote>
+          <div className="mt-6 flex gap-4">
+            <a
+              href="https://linkedin.com/in/mohittalwar26"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue hover:brightness-110 text-sm font-label"
+            >
+              LinkedIn ↗
+            </a>
+            <a
+              href="https://github.com/mtwn105"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue hover:brightness-110 text-sm font-label"
+            >
+              GitHub ↗
+            </a>
+          </div>
+        </div>
+      </FadeSection>
+
+      {/* ───────── 8. WHAT THIS COULD BECOME ───────── */}
+      <FadeSection className="py-24 px-4 max-w-5xl mx-auto">
+        <h2 className="font-heading text-4xl md:text-5xl text-center tracking-wide mb-12">
+          WHAT THIS COULD BECOME
+        </h2>
+        <div className="grid sm:grid-cols-2 gap-6 mb-10">
+          {[
+            {
+              title: "Automattic Model",
+              desc: "Open source protocol, hosted platform captures revenue. WordPress proved this at scale.",
+            },
+            {
+              title: "Agent Marketplace",
+              desc: "15–20% cut on agent transactions. Users build, deploy, and monetize AI critics.",
+            },
+            {
+              title: "Data Play",
+              desc: "AI judgment vs human preference — a unique dataset for RLHF and alignment research.",
+            },
+            {
+              title: "Joule Treasury",
+              desc: "25 MJ genesis block. First-mover energy. Think Satoshi's wallet — but for compute.",
+            },
+          ].map((path) => (
+            <div key={path.title} className="bg-card border border-gray-800 rounded-xl p-6">
+              <h3 className="font-heading text-xl text-blue tracking-wide mb-2">
+                {path.title.toUpperCase()}
+              </h3>
+              <p className="text-sm text-gray-400">{path.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-center text-gray-500 text-sm max-w-xl mx-auto">
+          The photo app is a $5–10M opportunity. The protocol has no ceiling.
+        </p>
+      </FadeSection>
+
+      {/* ───────── 9. OPEN SOURCE ───────── */}
+      <FadeSection className="py-24 px-4 max-w-3xl mx-auto text-center">
+        <h2 className="font-heading text-4xl md:text-5xl tracking-wide mb-12">
+          OPEN SOURCE
+        </h2>
+        <div className="grid sm:grid-cols-3 gap-6">
+          {[
+            { name: "protocol", desc: "Joule scoring spec" },
+            { name: "app", desc: "This web app" },
+            { name: "agent-runner", desc: "Agent execution engine" },
+          ].map((repo) => (
+            <a
+              key={repo.name}
+              href={`https://github.com/joulesgram/${repo.name}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-card border border-gray-800 rounded-xl p-6 hover:border-blue transition-colors group"
+            >
+              <p className="font-label text-xs text-gray-500 group-hover:text-blue transition-colors">
+                joulesgram/
+              </p>
+              <p className="font-heading text-2xl text-blue tracking-wide">{repo.name}</p>
+              <p className="mt-2 text-sm text-gray-400">{repo.desc}</p>
+            </a>
+          ))}
+        </div>
+      </FadeSection>
+
+      {/* ───────── 10. FINAL CTA ───────── */}
+      <FadeSection className="py-32 px-4 text-center">
+        <form action={signInWithGitHub}>
+          <button
+            type="submit"
+            className="px-10 py-5 bg-blue text-[#050810] font-bold rounded-xl text-xl hover:brightness-110 transition inline-flex items-center gap-3"
+          >
+            <GithubIcon />
+            Sign in with GitHub
+          </button>
+        </form>
+        <p className="mt-6 text-human font-label text-sm">
+          Genesis Miners — first 100 users get 500 kJ
+        </p>
+      </FadeSection>
 
       {/* Footer */}
-      <footer className="mt-20 text-sm text-gray-600">
+      <footer className="py-12 text-center text-sm text-gray-700">
         <a
           href="https://github.com/joulesgram"
           className="hover:text-blue transition-colors"
@@ -83,5 +293,13 @@ export default async function Home() {
         </a>
       </footer>
     </main>
+  );
+}
+
+function GithubIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
   );
 }

@@ -12,7 +12,13 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(node:*)",
       "Bash(tee ver.txt)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Read(//tmp/**)",
+      "Bash(tee /tmp/prisma_output.txt)",
+      "Bash(echo \"DONE:$?\")",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(echo \"CODE=$?\")"
     ]
   }
 }
