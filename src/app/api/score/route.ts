@@ -14,6 +14,17 @@ const anthropic = new Anthropic();
 const JOULES_PER_INPUT_TOKEN = 0.003;
 const JOULES_PER_OUTPUT_TOKEN = 0.015;
 
+const VALID_CATEGORIES = [
+  "landscape",
+  "food",
+  "portrait",
+  "architecture",
+  "street",
+  "nature",
+  "abstract",
+  "night",
+] as const;
+
 interface AgentScore {
   agentId: string;
   agentName: string;
@@ -28,67 +39,70 @@ interface ScoreResponse {
     critique: string;
   }[];
   overall_critique: string;
+  category: string;
   nsfw: boolean;
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
 
-  const body = await req.json();
-  const { photoId } = body as { photoId: string };
+    const body = await req.json();
+    const { photoId } = body as { photoId: string };
 
-  if (!photoId) {
-    return NextResponse.json({ error: "photoId required" }, { status: 400 });
-  }
+    if (!photoId) {
+      return NextResponse.json({ error: "photoId required" }, { status: 400 });
+    }
 
-  // Fetch photo
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
-  if (!photo) {
-    return NextResponse.json({ error: "Photo not found" }, { status: 404 });
-  }
-  if (photo.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not your photo" }, { status: 403 });
-  }
-  if (photo.aiScore !== null) {
-    return NextResponse.json({ error: "Already scored" }, { status: 409 });
-  }
+    // Fetch photo
+    const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+    if (!photo) {
+      return NextResponse.json({ error: "Photo not found" }, { status: 404 });
+    }
+    if (photo.userId !== session.user.id) {
+      return NextResponse.json({ error: "Not your photo" }, { status: 403 });
+    }
+    if (photo.aiScore !== null) {
+      return NextResponse.json({ error: "Already scored" }, { status: 409 });
+    }
 
-  // Fetch all active agents
-  const agents = await prisma.agent.findMany({
-    where: { creator: { active: true } },
-    select: { id: true, name: true, persona: true },
-  });
+    // Fetch all active agents
+    const agents = await prisma.agent.findMany({
+      where: { creator: { active: true } },
+      select: { id: true, name: true, persona: true },
+    });
 
-  if (agents.length === 0) {
-    return NextResponse.json(
-      { error: "No agents available for scoring" },
-      { status: 503 }
-    );
-  }
+    if (agents.length === 0) {
+      return NextResponse.json(
+        { error: "No agents available for scoring" },
+        { status: 503 }
+      );
+    }
 
-  // Build agent personas block for the prompt
-  const agentBlock = agents
-    .map(
-      (a, i) =>
-        `Agent ${i + 1}: "${a.name}"\nPersona: ${a.persona || "A professional photography critic."}`
-    )
-    .join("\n\n");
+    // Build agent personas block for the prompt
+    const agentBlock = agents
+      .map(
+        (a: { id: string; name: string; persona: string | null }, i: number) =>
+          `Agent ${i + 1}: "${a.name}"\nPersona: ${a.persona || "A professional photography critic."}`
+      )
+      .join("\n\n");
 
-  const systemPrompt = `You are a multi-agent photo scoring system. You will evaluate a photograph from the perspective of multiple AI agents, each with their own persona and aesthetic preferences.
+    const systemPrompt = `You are a multi-agent photo scoring system. You will evaluate a photograph from the perspective of multiple AI agents, each with their own persona and aesthetic preferences.
 
 Rate the photo on a scale of ${RATING_SCALE.min} to ${RATING_SCALE.max} (0.1 precision).
 
-Also determine if the photo contains NSFW content.
+Also detect the photo category and determine if the photo contains NSFW content.
 
 Respond ONLY with valid JSON matching this exact schema:
 {
   "agent_scores": [
-    { "agent_name": "<exact agent name>", "score": <float 1.0-5.0>, "critique": "<2-3 sentences>" }
+    { "agent_name": "<exact agent name>", "score": <float 1.0-5.0>, "critique": "<one sentence>" }
   ],
-  "overall_critique": "<1-2 sentence summary>",
+  "overall_critique": "<one sentence summary>",
+  "category": "<one of: landscape, food, portrait, architecture, street, nature, abstract, night>",
   "nsfw": <boolean>
 }
 
@@ -96,8 +110,7 @@ Here are the agents:
 
 ${agentBlock}`;
 
-  try {
-    // Read image as base64 — imageUrl is a data URL or a remote URL
+    // Build image content block
     let imageContent: Anthropic.ImageBlockParam;
     if (photo.imageUrl.startsWith("data:")) {
       const [meta, data] = photo.imageUrl.split(",");
@@ -125,7 +138,7 @@ ${agentBlock}`;
           role: "user",
           content: [
             imageContent,
-            { type: "text", text: "Score this photograph from each agent's perspective." },
+            { type: "text", text: "Score this photograph from each agent's perspective. Detect the category automatically." },
           ],
         },
       ],
@@ -147,7 +160,16 @@ ${agentBlock}`;
       jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
     }
 
-    const parsed: ScoreResponse = JSON.parse(jsonStr);
+    let parsed: ScoreResponse;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error("Failed to parse AI response:", jsonStr);
+      return NextResponse.json(
+        { error: "Failed to parse AI response" },
+        { status: 502 }
+      );
+    }
 
     // Compute energy cost in joules
     const inputTokens = response.usage.input_tokens;
@@ -161,7 +183,8 @@ ${agentBlock}`;
     const agentScores: AgentScore[] = [];
     for (const as_ of parsed.agent_scores) {
       const agent = agents.find(
-        (a) => a.name.toLowerCase() === as_.agent_name.toLowerCase()
+        (a: { id: string; name: string; persona: string | null }) =>
+          a.name.toLowerCase() === as_.agent_name.toLowerCase()
       );
       if (!agent) continue;
 
@@ -182,7 +205,7 @@ ${agentBlock}`;
     const aiScore =
       agentScores.length > 0
         ? Math.round(
-            (agentScores.reduce((sum, a) => sum + a.score, 0) /
+            (agentScores.reduce((sum: number, a: AgentScore) => sum + a.score, 0) /
               agentScores.length) *
               10
           ) / 10
@@ -205,10 +228,17 @@ ${agentBlock}`;
       });
     }
 
+    // Validate and store category
+    const detectedCategory = VALID_CATEGORIES.includes(
+      parsed.category?.toLowerCase() as typeof VALID_CATEGORIES[number]
+    )
+      ? parsed.category.toLowerCase()
+      : null;
+
     // Determine if published (meets threshold)
     const published = aiScore !== null && aiScore >= PUBLISH_THRESHOLD;
 
-    // Update photo with AI score, critique, compute cost, NSFW flag
+    // Update photo with AI score, critique, compute cost, NSFW flag, and category
     await prisma.photo.update({
       where: { id: photoId },
       data: {
@@ -216,6 +246,7 @@ ${agentBlock}`;
         critique: parsed.overall_critique,
         computeKJ,
         nsfw: parsed.nsfw,
+        category: detectedCategory,
       },
     });
 
@@ -254,7 +285,7 @@ ${agentBlock}`;
       critique: parsed.overall_critique,
       nsfw: parsed.nsfw,
       published,
-      agentScores: agentScores.map((a) => ({
+      agentScores: agentScores.map((a: AgentScore) => ({
         agentName: a.agentName,
         score: a.score,
         critique: a.critique,
@@ -265,7 +296,6 @@ ${agentBlock}`;
     });
   } catch (e) {
     console.error("Score API error:", e);
-    const message = e instanceof Error ? e.message : "Scoring failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

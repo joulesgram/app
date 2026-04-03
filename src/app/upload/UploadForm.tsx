@@ -6,17 +6,6 @@ import { createPhoto } from "./actions";
 import { PHOTO_SCORE_KJ, PUBLISH_THRESHOLD } from "@/lib/constants";
 import { fmtJ } from "@/lib/joules";
 
-const CATEGORIES = [
-  "Portrait",
-  "Landscape",
-  "Street",
-  "Architecture",
-  "Nature",
-  "Abstract",
-  "Food",
-  "Other",
-];
-
 type UploadState = "idle" | "preview" | "uploading" | "scoring" | "done" | "error";
 
 interface ScoreResult {
@@ -37,7 +26,6 @@ export default function UploadForm() {
   const [state, setState] = useState<UploadState>("idle");
   const [preview, setPreview] = useState<string | null>(null);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScoreResult | null>(null);
 
@@ -73,8 +61,8 @@ export default function UploadForm() {
     setState("uploading");
 
     try {
-      // 1. Create photo record
-      const { photoId } = await createPhoto(dataUrl, category);
+      // 1. Create photo record (category auto-detected by AI)
+      const { photoId } = await createPhoto(dataUrl, null);
 
       // 2. Call score API
       setState("scoring");
@@ -96,13 +84,12 @@ export default function UploadForm() {
       setError(e instanceof Error ? e.message : "Upload failed");
       setState("error");
     }
-  }, [dataUrl, category]);
+  }, [dataUrl]);
 
   const handleReset = useCallback(() => {
     setState("idle");
     setPreview(null);
     setDataUrl(null);
-    setCategory(null);
     setError(null);
     setResult(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -148,30 +135,6 @@ export default function UploadForm() {
               </span>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Category picker */}
-      {state === "preview" && (
-        <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
-            Category (optional)
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(category === c ? null : c)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  category === c
-                    ? "border-blue text-blue bg-blue/10"
-                    : "border-gray-700 text-gray-400 hover:border-gray-500"
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
