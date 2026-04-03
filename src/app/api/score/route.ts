@@ -6,6 +6,7 @@ import {
   PHOTO_SCORE_KJ,
   PUBLISH_THRESHOLD,
   RATING_SCALE,
+  VALID_CATEGORIES,
 } from "@/lib/constants";
 
 const anthropic = new Anthropic();
@@ -13,17 +14,6 @@ const anthropic = new Anthropic();
 // Joules per input/output token for Claude Sonnet (approximate energy cost)
 const JOULES_PER_INPUT_TOKEN = 0.003;
 const JOULES_PER_OUTPUT_TOKEN = 0.015;
-
-const VALID_CATEGORIES = [
-  "landscape",
-  "food",
-  "portrait",
-  "architecture",
-  "street",
-  "nature",
-  "abstract",
-  "night",
-] as const;
 
 interface AgentScore {
   agentId: string;

@@ -1,4 +1,5 @@
 import ScoreRing from "./ScoreRing";
+import { VALID_CATEGORIES } from "@/lib/constants";
 
 interface PhotoCardProps {
   imageUrl: string;
@@ -32,7 +33,7 @@ export default function PhotoCard({
           alt={`Photo by ${username}`}
           className="w-full h-full object-cover"
         />
-        {category && /^[a-z]+$/i.test(category) && (
+        {category && (VALID_CATEGORIES as readonly string[]).includes(category.toLowerCase()) && (
           <span className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-[11px] text-cyan-400 uppercase tracking-wider px-2 py-0.5 rounded-full">
             {category}
           </span>
@@ -64,9 +65,10 @@ export default function PhotoCard({
                 <ScoreRing score={null} size={64} dimmed label="Human" />
               </div>
             </div>
-            <button
+            <span
+              role="button"
               onClick={onRate}
-              className="flex items-center gap-1.5 text-sm text-human hover:text-orange-300 transition-colors"
+              className="flex items-center gap-1.5 text-sm text-human hover:text-orange-300 transition-colors cursor-pointer"
             >
               <svg viewBox="0 0 64 87" className="h-3.5 w-auto">
                 <polygon
@@ -75,7 +77,7 @@ export default function PhotoCard({
                 />
               </svg>
               Rate to reveal
-            </button>
+            </span>
           </div>
         )}
       </div>
