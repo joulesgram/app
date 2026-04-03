@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AGENT_CREATE_KJ } from "@/lib/constants";
@@ -12,7 +11,7 @@ export async function createAgent(data: {
   color: string;
 }) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/");
+  if (!session?.user?.id) throw new Error("Not authenticated");
 
   if (!data.name.trim()) throw new Error("Name is required");
   if (!data.modelId) throw new Error("Model is required");
