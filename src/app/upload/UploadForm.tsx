@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createPhoto } from "./actions";
 import { PHOTO_SCORE_KJ, PUBLISH_THRESHOLD } from "@/lib/constants";
 import { fmtJ } from "@/lib/joules";
 
@@ -61,30 +60,35 @@ export default function UploadForm() {
     setState("uploading");
 
     try {
-      // 1. Create photo record
-      const response = await createPhoto(dataUrl);
+      // 1. Upload photo via API route (not server action — avoids body size limits)
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: dataUrl }),
+      });
 
-      // Guard: server action might return undefined if something goes wrong
-      if (!response || !response.photoId) {
-        throw new Error("Failed to create photo — please try again");
+      if (!uploadRes.ok) {
+        const data = await uploadRes.json().catch(() => ({}));
+        throw new Error(data.error || "Upload failed");
       }
 
-      const photoId = response.photoId;
+      const { photoId } = await uploadRes.json();
+      if (!photoId) throw new Error("Upload failed — no photo ID returned");
 
-      // 2. Call score API
+      // 2. Score the photo with AI
       setState("scoring");
-      const res = await fetch("/api/score", {
+      const scoreRes = await fetch("/api/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photoId }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      if (!scoreRes.ok) {
+        const data = await scoreRes.json().catch(() => ({}));
         throw new Error(data.error || "Scoring failed");
       }
 
-      const scoreResult: ScoreResult = await res.json();
+      const scoreResult: ScoreResult = await scoreRes.json();
       setResult(scoreResult);
       setState("done");
     } catch (e: unknown) {
@@ -174,7 +178,7 @@ export default function UploadForm() {
       {state === "uploading" && (
         <div className="flex items-center justify-center gap-3 py-6">
           <div className="h-5 w-5 border-2 border-blue border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-400">Creating photo...</span>
+          <span className="text-gray-400">Uploading photo...</span>
         </div>
       )}
 
@@ -198,7 +202,6 @@ export default function UploadForm() {
       {/* Results */}
       {state === "done" && result && (
         <div className="space-y-4">
-          {/* Overall score */}
           <div className="bg-card border border-gray-800 rounded-xl p-5 text-center">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
               AI Score
@@ -228,7 +231,6 @@ export default function UploadForm() {
             </div>
           </div>
 
-          {/* Critique */}
           <div className="bg-card border border-gray-800 rounded-xl p-5">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
               AI Critique
@@ -238,7 +240,6 @@ export default function UploadForm() {
             </p>
           </div>
 
-          {/* Agent breakdown */}
           {result.agentScores.length > 0 && (
             <div className="bg-card border border-gray-800 rounded-xl p-5">
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
@@ -260,7 +261,6 @@ export default function UploadForm() {
             </div>
           )}
 
-          {/* Compute cost */}
           <div className="bg-card border border-gray-800 rounded-xl p-4 flex items-center justify-between text-xs text-gray-500">
             <span>
               Compute: {result.computeJoules.toFixed(2)} J ({result.tokens.input}
@@ -269,7 +269,6 @@ export default function UploadForm() {
             <span>{result.computeKJ.toFixed(3)} kJ</span>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3">
             <button
               onClick={() => router.push(`/photo/${result.photoId}`)}
