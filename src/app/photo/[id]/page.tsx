@@ -56,7 +56,6 @@ export default async function PhotoPage({
         photoId={photo.id}
         imageUrl={photo.imageUrl}
         username={photo.user.username}
-        category={photo.category}
         aiScore={photo.aiScore}
         critique={photo.critique}
         humanAvg={humanAvg}

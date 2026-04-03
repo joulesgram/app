@@ -5,22 +5,12 @@ import Logo from "@/components/Logo";
 import PhotoCard from "@/components/PhotoCard";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import { VALID_CATEGORIES } from "@/lib/constants";
 
 export default async function FeedPage() {
   const session = await auth();
   if (!session?.user) redirect("/");
 
   const userId = session.user.id;
-
-  // Cleanup: null out any category not in the valid list
-  await prisma.photo.updateMany({
-    where: {
-      category: { notIn: [...VALID_CATEGORIES] },
-      NOT: { category: null },
-    },
-    data: { category: null },
-  });
 
   const photos = await prisma.photo.findMany({
     orderBy: { createdAt: "desc" },
@@ -37,13 +27,12 @@ export default async function FeedPage() {
     id: p.id,
     imageUrl: p.imageUrl,
     username: p.user.username,
-    category: null,
     aiScore: p.aiScore,
     isOwner: p.userId === userId,
     hasRated: p.humanRatings.length > 0,
   }));
 
-  // Resolve human scores in parallel
+  // Compute human score averages in parallel
   const humanScores = await Promise.all(
     photos.map((p) =>
       prisma.humanRating
@@ -99,7 +88,6 @@ export default async function FeedPage() {
                 <PhotoCard
                   imageUrl={photo.imageUrl}
                   username={photo.username}
-                  category={photo.category}
                   aiScore={photo.aiScore}
                   humanScore={humanScores[i]}
                   isOwner={photo.isOwner}
