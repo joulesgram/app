@@ -37,7 +37,7 @@ export default async function FeedPage() {
     id: p.id,
     imageUrl: p.imageUrl,
     username: p.user.username,
-    category: p.category,
+    category: null,
     aiScore: p.aiScore,
     isOwner: p.userId === userId,
     hasRated: p.humanRatings.length > 0,
