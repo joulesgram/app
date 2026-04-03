@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir C:\\\\Users\\\\mohit\\\\joulesgram\\\\app:*)",
+      "Bash(git -C C:/Users/mohit/joulesgram/app log --oneline -3)",
+      "Bash(git -C C:/Users/mohit/joulesgram/app ls-files)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)"
+    ]
+  }
+}
