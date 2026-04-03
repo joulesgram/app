@@ -15,7 +15,8 @@ declare module "next-auth" {
   }
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID!,
@@ -26,47 +27,51 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user, profile }) {
       if (!user.email) return false;
 
-      const existing = await prisma.user.findUnique({
-        where: { email: user.email },
-      });
-
-      if (!existing) {
-        const username =
-          (profile as { login?: string })?.login ??
-          user.email.split("@")[0];
-
-        const userCount = await prisma.user.count();
-        const userNumber = userCount + 1;
-        const referralCode = `${username}${userNumber}`;
-        const reward = getSignupReward(userNumber);
-
-        // Read referral cookie set by middleware from ?ref= query param
-        const cookieStore = await cookies();
-        const referredBy = cookieStore.get("referral_code")?.value ?? null;
-
-        const newUser = await prisma.user.create({
-          data: {
-            email: user.email,
-            username,
-            userNumber,
-            referralCode,
-            referredBy,
-            coins: reward,
-          },
+      try {
+        const existing = await prisma.user.findUnique({
+          where: { email: user.email },
         });
 
-        await prisma.coinTransaction.create({
-          data: {
-            userId: newUser.id,
-            amount: reward,
-            description: `Signup reward (${reward} kJ)`,
-          },
-        });
+        if (!existing) {
+          const username =
+            (profile as { login?: string })?.login ??
+            user.email.split("@")[0];
 
-        // Walk the referral ancestor chain
-        if (referredBy) {
-          await processReferralChain(referredBy, newUser.id);
+          const userCount = await prisma.user.count();
+          const userNumber = userCount + 1;
+          const referralCode = `${username}${userNumber}`;
+          const reward = getSignupReward(userNumber);
+
+          // Read referral cookie set by middleware from ?ref= query param
+          const cookieStore = await cookies();
+          const referredBy = cookieStore.get("referral_code")?.value ?? null;
+
+          const newUser = await prisma.user.create({
+            data: {
+              email: user.email,
+              username,
+              userNumber,
+              referralCode,
+              referredBy,
+              coins: reward,
+            },
+          });
+
+          await prisma.coinTransaction.create({
+            data: {
+              userId: newUser.id,
+              amount: reward,
+              description: `Signup reward (${reward} kJ)`,
+            },
+          });
+
+          // Walk the referral ancestor chain
+          if (referredBy) {
+            await processReferralChain(referredBy, newUser.id);
+          }
         }
+      } catch (e) {
+        console.error("Auth signIn DB error:", e);
       }
 
       return true;
@@ -74,14 +79,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
     async jwt({ token, user }) {
       if (user?.email) {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: user.email },
-        });
-        if (dbUser) {
-          token.userId = dbUser.id;
-          token.username = dbUser.username;
-          token.userNumber = dbUser.userNumber;
-          token.coins = dbUser.coins;
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: user.email },
+          });
+          if (dbUser) {
+            token.userId = dbUser.id;
+            token.username = dbUser.username;
+            token.userNumber = dbUser.userNumber;
+            token.coins = dbUser.coins;
+          }
+        } catch (e) {
+          console.error("Auth jwt DB error:", e);
         }
       }
       return token;
