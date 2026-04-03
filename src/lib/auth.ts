@@ -101,15 +101,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.userId as string;
         session.user.username = token.username as string;
         session.user.userNumber = token.userNumber as number;
-        session.user.coins = token.coins as number;
+
+        // Always fetch fresh coin balance from DB (not the stale JWT value)
+        try {
+          const freshUser = await prisma.user.findUnique({
+            where: { id: token.userId as string },
+            select: { coins: true },
+          });
+          session.user.coins = freshUser?.coins ?? (token.coins as number);
+        } catch {
+          session.user.coins = token.coins as number;
+        }
       }
       return session;
     },
   },
   session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
 });
 
 async function processReferralChain(

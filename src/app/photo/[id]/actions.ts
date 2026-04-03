@@ -19,26 +19,29 @@ export async function submitRating(photoId: string, score: number) {
   });
   if (existing) throw new Error("Already rated");
 
-  const rating = await prisma.humanRating.create({
-    data: {
-      photoId,
-      userId: session.user.id,
-      score: Math.round(score * 10) / 10,
-    },
-  });
+  const roundedScore = Math.round(score * 10) / 10;
+  const userId = session.user.id;
 
-  // Deduct rating energy cost
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { coins: { decrement: RATING_KJ } },
-  });
+  // Use a transaction so rating + coin deduction are atomic
+  const rating = await prisma.$transaction(async (tx) => {
+    const r = await tx.humanRating.create({
+      data: { photoId, userId, score: roundedScore },
+    });
 
-  await prisma.coinTransaction.create({
-    data: {
-      userId: session.user.id,
-      amount: -RATING_KJ,
-      description: `Rated photo (${RATING_KJ} kJ)`,
-    },
+    await tx.user.update({
+      where: { id: userId },
+      data: { coins: { decrement: RATING_KJ } },
+    });
+
+    await tx.coinTransaction.create({
+      data: {
+        userId,
+        amount: -RATING_KJ,
+        description: `Rated photo (${RATING_KJ} kJ)`,
+      },
+    });
+
+    return r;
   });
 
   // Compute average human score

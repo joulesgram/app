@@ -13,6 +13,10 @@ export default async function FeedPage() {
   const userId = session.user.id;
 
   const photos = await prisma.photo.findMany({
+    where: {
+      aiScore: { not: null },
+      nsfw: false,
+    },
     orderBy: { createdAt: "desc" },
     include: {
       user: { select: { username: true } },

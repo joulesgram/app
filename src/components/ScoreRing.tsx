@@ -48,7 +48,7 @@ export default function ScoreRing({
       </svg>
       {/* Centered score */}
       <div
-        className="absolute flex flex-col items-center justify-center"
+        className="absolute top-0 left-0 flex flex-col items-center justify-center"
         style={{ width: size, height: size }}
       >
         {score !== null ? (
