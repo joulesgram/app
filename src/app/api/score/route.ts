@@ -40,6 +40,7 @@ interface ScoreResponse {
   }[];
   overall_critique: string;
   category: string;
+  score?: number; // direct score when no agents exist
   nsfw: boolean;
 }
 
@@ -75,22 +76,17 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true, persona: true },
     });
 
-    if (agents.length === 0) {
-      return NextResponse.json(
-        { error: "No agents available for scoring" },
-        { status: 503 }
-      );
-    }
+    // Build prompt — works with or without agents
+    let systemPrompt: string;
+    if (agents.length > 0) {
+      const agentBlock = agents
+        .map(
+          (a: { id: string; name: string; persona: string | null }, i: number) =>
+            `Agent ${i + 1}: "${a.name}"\nPersona: ${a.persona || "A professional photography critic."}`
+        )
+        .join("\n\n");
 
-    // Build agent personas block for the prompt
-    const agentBlock = agents
-      .map(
-        (a: { id: string; name: string; persona: string | null }, i: number) =>
-          `Agent ${i + 1}: "${a.name}"\nPersona: ${a.persona || "A professional photography critic."}`
-      )
-      .join("\n\n");
-
-    const systemPrompt = `You are a multi-agent photo scoring system. You will evaluate a photograph from the perspective of multiple AI agents, each with their own persona and aesthetic preferences.
+      systemPrompt = `You are a multi-agent photo scoring system. You will evaluate a photograph from the perspective of multiple AI agents, each with their own persona and aesthetic preferences.
 
 Rate the photo on a scale of ${RATING_SCALE.min} to ${RATING_SCALE.max} (0.1 precision).
 
@@ -109,6 +105,22 @@ Respond ONLY with valid JSON matching this exact schema:
 Here are the agents:
 
 ${agentBlock}`;
+    } else {
+      systemPrompt = `You are a professional photography critic and scoring system.
+
+Rate the photo on a scale of ${RATING_SCALE.min} to ${RATING_SCALE.max} (0.1 precision).
+
+Also detect the photo category and determine if the photo contains NSFW content.
+
+Respond ONLY with valid JSON matching this exact schema:
+{
+  "agent_scores": [],
+  "overall_critique": "<one sentence summary>",
+  "category": "<one of: landscape, food, portrait, architecture, street, nature, abstract, night>",
+  "score": <float 1.0-5.0>,
+  "nsfw": <boolean>
+}`;
+    }
 
     // Build image content block
     let imageContent: Anthropic.ImageBlockParam;
@@ -181,35 +193,45 @@ ${agentBlock}`;
 
     // Match agent scores to DB agents and save
     const agentScores: AgentScore[] = [];
-    for (const as_ of parsed.agent_scores) {
-      const agent = agents.find(
-        (a: { id: string; name: string; persona: string | null }) =>
-          a.name.toLowerCase() === as_.agent_name.toLowerCase()
-      );
-      if (!agent) continue;
+    if (parsed.agent_scores && parsed.agent_scores.length > 0) {
+      for (const as_ of parsed.agent_scores) {
+        const agent = agents.find(
+          (a: { id: string; name: string; persona: string | null }) =>
+            a.name.toLowerCase() === as_.agent_name.toLowerCase()
+        );
+        if (!agent) continue;
 
-      const score = Math.max(
-        RATING_SCALE.min,
-        Math.min(RATING_SCALE.max, Math.round(as_.score * 10) / 10)
-      );
+        const score = Math.max(
+          RATING_SCALE.min,
+          Math.min(RATING_SCALE.max, Math.round(as_.score * 10) / 10)
+        );
 
-      agentScores.push({
-        agentId: agent.id,
-        agentName: agent.name,
-        score,
-        critique: as_.critique,
-      });
+        agentScores.push({
+          agentId: agent.id,
+          agentName: agent.name,
+          score,
+          critique: as_.critique,
+        });
+      }
     }
 
-    // Average AI score across agents
-    const aiScore =
-      agentScores.length > 0
-        ? Math.round(
-            (agentScores.reduce((sum: number, a: AgentScore) => sum + a.score, 0) /
-              agentScores.length) *
-              10
-          ) / 10
-        : null;
+    // Average AI score across agents, or use direct score if no agents
+    let aiScore: number | null;
+    if (agentScores.length > 0) {
+      aiScore = Math.round(
+        (agentScores.reduce((sum: number, a: AgentScore) => sum + a.score, 0) /
+          agentScores.length) *
+          10
+      ) / 10;
+    } else if (parsed.score != null) {
+      // No agents — use the direct score from AI
+      aiScore = Math.max(
+        RATING_SCALE.min,
+        Math.min(RATING_SCALE.max, Math.round(parsed.score * 10) / 10)
+      );
+    } else {
+      aiScore = null;
+    }
 
     // Per-agent compute share
     const perAgentJoules =
