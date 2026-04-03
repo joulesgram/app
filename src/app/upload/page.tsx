@@ -13,9 +13,9 @@ export default async function UploadPage() {
         <div className="flex items-center justify-between mb-8">
           <Logo className="text-2xl" />
           <div className="text-right">
-            <p className="text-xs text-gray-500">@{session.user.username}</p>
+            <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
             <p className="text-sm font-mono text-blue">
-              {session.user.coins.toLocaleString()} kJ
+              {(session.user.coins ?? 0).toLocaleString()} kJ
             </p>
           </div>
         </div>

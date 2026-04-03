@@ -141,10 +141,10 @@ export default async function AgentsPage() {
           {session?.user && (
             <div className="text-right">
               <p className="text-xs text-gray-500">
-                @{session.user.username}
+                @{session.user.username ?? "user"}
               </p>
               <p className="text-sm font-mono text-blue">
-                {session.user.coins.toLocaleString()} kJ
+                {(session.user.coins ?? 0).toLocaleString()} kJ
               </p>
             </div>
           )}
