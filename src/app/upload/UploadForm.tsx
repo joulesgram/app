@@ -19,6 +19,11 @@ interface ScoreResult {
   tokens: { input: number; output: number };
 }
 
+interface UploadResponse {
+  photoId?: string;
+  error?: string;
+}
+
 export default function UploadForm() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,8 +77,11 @@ export default function UploadForm() {
         throw new Error(data.error || "Upload failed");
       }
 
-      const { photoId } = await uploadRes.json();
-      if (!photoId) throw new Error("Upload failed — no photo ID returned");
+      const uploadData = (await uploadRes.json().catch(() => null)) as UploadResponse | null;
+      const photoId = uploadData?.photoId;
+      if (!photoId) {
+        throw new Error(uploadData?.error || "Upload failed — no photo ID returned");
+      }
 
       // 2. Score the photo with AI
       setState("scoring");
@@ -88,7 +96,10 @@ export default function UploadForm() {
         throw new Error(data.error || "Scoring failed");
       }
 
-      const scoreResult: ScoreResult = await scoreRes.json();
+      const scoreResult = (await scoreRes.json().catch(() => null)) as ScoreResult | null;
+      if (!scoreResult) {
+        throw new Error("Scoring failed — invalid response");
+      }
       setResult(scoreResult);
       setState("done");
     } catch (e: unknown) {
