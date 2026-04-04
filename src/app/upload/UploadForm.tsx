@@ -266,6 +266,24 @@ export default function UploadForm() {
       {/* Results */}
       {state === "done" && result && (
         <div className="space-y-4">
+          <div className="bg-blue/10 border border-blue/30 rounded-xl p-4">
+            <p className="text-xs text-blue uppercase tracking-wider mb-2">
+              Joules update
+            </p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-400">AI scoring cost</span>
+              <span className="text-red-300">-{fmtJ(PHOTO_SCORE_KJ)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mt-1">
+              <span className="text-gray-400">Upload reward</span>
+              <span className="text-green-300">+5 kJ</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-blue/20 flex items-center justify-between text-sm font-semibold">
+              <span>Net change</span>
+              <span className="text-blue">-{fmtJ(PHOTO_SCORE_KJ - 5)}</span>
+            </div>
+          </div>
+
           <div className="bg-card border border-gray-800 rounded-xl p-5 text-center">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
               AI Score

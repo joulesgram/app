@@ -24,10 +24,20 @@ export default async function FeedPage() {
         where: { userId },
         select: { id: true },
       },
+      _count: {
+        select: { humanRatings: true },
+      },
     },
   });
 
-  const feed = photos.map((p) => ({
+  const sortedPhotos = [...photos].sort((a, b) => {
+    const aNeedsVotes = a.userId === userId && a._count.humanRatings === 0;
+    const bNeedsVotes = b.userId === userId && b._count.humanRatings === 0;
+    if (aNeedsVotes !== bNeedsVotes) return aNeedsVotes ? -1 : 1;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
+  const feed = sortedPhotos.map((p) => ({
     id: p.id,
     imageUrl: p.imageUrl,
     username: p.user.username,
@@ -38,7 +48,7 @@ export default async function FeedPage() {
 
   // Compute human score averages in parallel
   const humanScores = await Promise.all(
-    photos.map((p) =>
+    sortedPhotos.map((p) =>
       prisma.humanRating
         .findMany({ where: { photoId: p.id }, select: { score: true } })
         .then((rs) =>
