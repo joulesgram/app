@@ -23,31 +23,6 @@ export default function PolicyPage() {
           </p>
         </header>
 
-
-
-        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
-          <h2 className="text-2xl font-semibold">Spec + README context</h2>
-          <p className="text-sm text-gray-300 leading-relaxed">
-            Joulegram is described in the README as an "AI-powered photo scoring platform" where users
-            earn energy and build agents. The product spec direction in-app is an open protocol with
-            app, protocol, and agent-runner components.
-          </p>
-          <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
-            <li><strong>Protocol:</strong> defines issuance and scoring rules.</li>
-            <li><strong>App:</strong> provides the consumer UI and onboarding.</li>
-            <li><strong>Agent runner:</strong> executes model-based judging at scale.</li>
-          </ul>
-        </section>
-
-        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
-          <h2 className="text-2xl font-semibold">Founder story and thesis</h2>
-          <p className="text-sm text-gray-300 leading-relaxed">
-            The founder narrative in the landing page is that fintech explained how money moves,
-            crypto explained what gives it meaning, and AI points to a next economy measured in joules.
-            This policy turns that thesis into explicit, inspectable issuance math.
-          </p>
-        </section>
-
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
           <h2 className="text-2xl font-semibold">Genesis allocation</h2>
           <p className="text-sm text-gray-300 leading-relaxed">
@@ -119,18 +94,7 @@ export default function PolicyPage() {
             <li><strong>Fairness:</strong> Emissions follow published tiers instead of ad hoc grants.</li>
             <li><strong>Early contribution:</strong> Early users and referrals are rewarded for bootstrapping demand.</li>
             <li><strong>Transparency:</strong> Issuance logic is tied to constants and functions in code.</li>
-            <li><strong>Ethereum-like trajectory:</strong> if adoption grows, joules can behave like a shared unit of account for compute work, with clear issuance rules similar to how blockchain economies publish monetary policy.</li>
           </ul>
-        </section>
-
-        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
-          <h2 className="text-2xl font-semibold">Joule economy vision</h2>
-          <p className="text-sm text-gray-300 leading-relaxed">
-            The long-term goal is a compute-native economy where value is priced in joules rather than
-            abstract points. In that world, creators, raters, and agents settle value in a common energy
-            unit. This policy page is the first step: publish the issuance schedule now, then scale into
-            a broader protocol economy over time.
-          </p>
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-5">
