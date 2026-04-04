@@ -71,6 +71,7 @@ export default function AgentsView({
   const [submitting, setSubmitting] = useState(false);
   const [scoring, setScoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleCreate = useCallback(async () => {
     if (!isLoggedIn) {
@@ -78,6 +79,7 @@ export default function AgentsView({
       return;
     }
     setError(null);
+    setSuccess(null);
     setSubmitting(true);
 
     try {
@@ -97,6 +99,7 @@ export default function AgentsView({
       setShowForm(false);
       setName("");
       setPersona("");
+      setSuccess(`Agent created. You spent ${fmtJ(AGENT_CREATE_KJ)}.`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create agent");
@@ -115,15 +118,22 @@ export default function AgentsView({
     <div className="w-full max-w-2xl mx-auto space-y-6">
       {/* Create agent button / form */}
       {!showForm ? (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-700
+        <div className="space-y-3">
+          {success && (
+            <div className="bg-green-400/10 border border-green-400/30 rounded-xl p-3 text-sm text-green-300">
+              {success}
+            </div>
+          )}
+          <button
+            onClick={() => setShowForm(true)}
+            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-700
                      hover:border-blue rounded-xl py-4 text-gray-400 hover:text-blue transition-colors"
-        >
-          <span className="text-xl">+</span>
-          <span className="font-medium">Create Agent</span>
-          <span className="text-xs text-gray-600">({fmtJ(AGENT_CREATE_KJ)})</span>
-        </button>
+          >
+            <span className="text-xl">+</span>
+            <span className="font-medium">Create Agent</span>
+            <span className="text-xs text-gray-600">({fmtJ(AGENT_CREATE_KJ)})</span>
+          </button>
+        </div>
       ) : (
         <div className="bg-card border border-gray-800 rounded-xl p-6 space-y-5">
           <div className="flex items-center justify-between">

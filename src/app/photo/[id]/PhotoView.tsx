@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import ScoreRing from "@/components/ScoreRing";
 import JouleSlider from "@/components/JouleSlider";
 import AgentBadge from "@/components/AgentBadge";
 import { submitRating } from "./actions";
+import { RATING_KJ } from "@/lib/constants";
 
 interface AgentRatingData {
   score: number;
@@ -28,6 +30,7 @@ interface PhotoViewProps {
   isOwner: boolean;
   existingRating: number | null;
   isLoggedIn: boolean;
+  nextPhotoId: string | null;
 }
 
 type Phase = "idle" | "submitting" | "revealing" | "done";
@@ -43,7 +46,9 @@ export default function PhotoView({
   isOwner,
   existingRating,
   isLoggedIn,
+  nextPhotoId,
 }: PhotoViewProps) {
+  const router = useRouter();
   const alreadyRevealed = existingRating !== null || isOwner;
 
   const [sliderValue, setSliderValue] = useState(3.0);
@@ -69,13 +74,18 @@ export default function PhotoView({
       setHumanAvg(result.humanAvg);
       setPhase("revealing");
       // Transition to done after a short reveal animation
-      setTimeout(() => setPhase("done"), 1200);
+      setTimeout(() => {
+        setPhase("done");
+        if (nextPhotoId) {
+          router.push(`/photo/${nextPhotoId}`);
+        }
+      }, 1200);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to submit rating";
       setError(msg);
       setPhase("idle");
     }
-  }, [photoId, sliderValue, isLoggedIn]);
+  }, [photoId, sliderValue, isLoggedIn, nextPhotoId, router]);
 
   return (
     <div className="w-full max-w-lg mx-auto">
@@ -151,6 +161,10 @@ export default function PhotoView({
             </svg>
             {phase === "submitting" ? "Submitting..." : "Submit Rating"}
           </button>
+          <p className="text-center text-xs text-gray-500">
+            Rating costs {RATING_KJ} kJ.
+            {nextPhotoId ? " You'll jump to the next unrated photo automatically." : ""}
+          </p>
 
           {error && (
             <p className="text-red-400 text-sm text-center">{error}</p>
@@ -179,7 +193,20 @@ export default function PhotoView({
                 </span>
                 <span className="text-gray-500">/5</span>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                You spent {RATING_KJ} kJ to reveal scores.
+              </p>
             </div>
+          )}
+
+          {userScore !== null && nextPhotoId && (
+            <button
+              onClick={() => router.push(`/photo/${nextPhotoId}`)}
+              className="w-full py-3 rounded-xl border border-gray-700 text-gray-300 text-sm
+                         hover:border-blue hover:text-blue transition-colors"
+            >
+              Next unrated photo
+            </button>
           )}
 
           {/* AI vs Human rings */}

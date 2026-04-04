@@ -49,6 +49,21 @@ export default async function PhotoPage({
   humanAvg = agg._avg.score ?? null;
 
   const isOwner = session?.user?.id === photo.userId;
+  const nextPhoto = session?.user?.id
+    ? await prisma.photo.findFirst({
+        where: {
+          id: { not: id },
+          aiScore: { not: null },
+          nsfw: false,
+          userId: { not: session.user.id },
+          humanRatings: {
+            none: { userId: session.user.id },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+    : null;
 
   return (
     <main className="min-h-screen px-4 py-8 pb-24">
@@ -67,6 +82,7 @@ export default async function PhotoPage({
         isOwner={isOwner}
         existingRating={existingRating}
         isLoggedIn={!!session?.user}
+        nextPhotoId={nextPhoto?.id ?? null}
       />
       <BottomNav />
     </main>
