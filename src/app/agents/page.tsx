@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import Link from "next/link";
 import Logo from "@/components/Logo";
 import BottomNav from "@/components/BottomNav";
 import AgentsView from "./AgentsView";
@@ -143,21 +142,13 @@ export default async function AgentsPage() {
         <div className="flex items-center justify-between mb-8">
           <Logo className="text-2xl" />
           {session?.user && (
-            <div className="flex items-center gap-3">
-              <Link
-                href="/policy"
-                className="text-xs px-3 py-1.5 border border-gray-700 rounded-full text-gray-300 hover:text-[#00d4ff] hover:border-[#00d4ff] transition-colors"
-              >
-                Issuance policy
-              </Link>
-              <div className="text-right">
-                <p className="text-xs text-gray-500">
-                  @{session.user.username ?? "user"}
-                </p>
-                <p className="text-sm font-mono text-blue">
-                  {(session.user.coins ?? 0).toLocaleString()} kJ
-                </p>
-              </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">
+                @{session.user.username ?? "user"}
+              </p>
+              <p className="text-sm font-mono text-blue">
+                {(session.user.coins ?? 0).toLocaleString()} kJ
+              </p>
             </div>
           )}
         </div>

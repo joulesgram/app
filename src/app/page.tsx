@@ -1,7 +1,6 @@
 import { auth, signIn } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Logo from "@/components/Logo";
-import Link from "next/link";
 
 export default async function Home() {
   const session = await auth();
@@ -27,12 +26,6 @@ export default async function Home() {
         <p className="mt-4 text-[#ff8a00] text-sm font-medium">
           First 100 users are Genesis Miners &mdash; 500 kJ
         </p>
-        <Link
-          href="/policy"
-          className="mt-2 inline-block text-sm text-[#00d4ff] hover:brightness-110 transition"
-        >
-          See the issuance policy &rarr;
-        </Link>
         <div className="mt-10 animate-bounce text-gray-600 text-2xl">↓</div>
       </section>
 
@@ -290,12 +283,7 @@ export default async function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 text-center text-sm text-gray-700 space-y-3">
-        <div>
-          <Link href="/policy" className="text-gray-400 hover:text-[#00d4ff] transition-colors">
-            Joule issuance policy
-          </Link>
-        </div>
+      <footer className="py-12 text-center text-sm text-gray-700">
         <a
           href="https://github.com/joulesgram"
           className="hover:text-[#00d4ff] transition-colors"
