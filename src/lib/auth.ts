@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import NextAuth, { type DefaultSession } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { cookies } from "next/headers";
@@ -44,7 +45,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           // Read referral cookie set by middleware from ?ref= query param
           const cookieStore = await cookies();
-          const referredBy = cookieStore.get("referral_code")?.value ?? null;
+          const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
+
+          let inviter: PrismaUser | null = null;
+          if (rawReferredBy) {
+            inviter = await prisma.user.findUnique({
+              where: { referralCode: rawReferredBy },
+            });
+
+            if (!inviter) {
+              logInvalidReferralAttempt(rawReferredBy, "inviter_not_found", user.email);
+            } else if (inviter.email === user.email) {
+              logInvalidReferralAttempt(rawReferredBy, "self_referral_email", user.email);
+              inviter = null;
+            }
+          }
+
+          const referredBy = inviter?.referralCode ?? null;
 
           const newUser = await prisma.user.create({
             data: {
@@ -66,8 +83,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
 
           // Walk the referral ancestor chain
-          if (referredBy) {
-            await processReferralChain(referredBy, newUser.id);
+          if (inviter && inviter.id !== newUser.id) {
+            await processReferralChain(inviter.referralCode, newUser.id);
+          } else if (inviter && inviter.id === newUser.id) {
+            logInvalidReferralAttempt(inviter.referralCode, "self_referral_id", newUser.email);
           }
         }
       } catch (e) {
@@ -118,6 +137,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: { strategy: "jwt" },
 });
+
+function logInvalidReferralAttempt(
+  rawReferralCode: string,
+  reason: "inviter_not_found" | "self_referral_email" | "self_referral_id",
+  email?: string | null
+) {
+  const truncatedCode =
+    rawReferralCode.length > 12
+      ? `${rawReferralCode.slice(0, 4)}...${rawReferralCode.slice(-4)}`
+      : rawReferralCode;
+  const codeHash = createHash("sha256")
+    .update(rawReferralCode)
+    .digest("hex")
+    .slice(0, 12);
+
+  console.warn(
+    `[auth.referral.invalid] reason=${reason} code=${truncatedCode} hash=${codeHash}${email ? ` email=${email}` : ""}`
+  );
+}
 
 async function processReferralChain(
   referralCode: string,
