@@ -25,15 +25,11 @@ interface UploadResponse {
 }
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-const MAX_IMAGE_EDGE = 2048;
+const MAX_REQUEST_BYTES = 3_500_000;
+const MAX_IMAGE_EDGE = 1600;
 
-function dataUrlBytes(dataUrl: string): number {
-  const parts = dataUrl.split(",");
-  if (parts.length < 2) return 0;
-  const base64 = parts[1] ?? "";
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  return Math.floor((base64.length * 3) / 4) - padding;
+function uploadPayloadBytes(dataUrl: string): number {
+  return new TextEncoder().encode(JSON.stringify({ imageUrl: dataUrl })).length;
 }
 
 async function optimizeImage(file: File): Promise<string> {
@@ -64,7 +60,7 @@ async function optimizeImage(file: File): Promise<string> {
     let quality = 0.9;
     let optimized = canvas.toDataURL("image/jpeg", quality);
 
-    while (dataUrlBytes(optimized) > MAX_UPLOAD_BYTES && quality > 0.45) {
+    while (uploadPayloadBytes(optimized) > MAX_REQUEST_BYTES && quality > 0.4) {
       quality -= 0.1;
       optimized = canvas.toDataURL("image/jpeg", quality);
     }
@@ -102,7 +98,7 @@ export default function UploadForm() {
     try {
       const optimized = await optimizeImage(file);
 
-      if (dataUrlBytes(optimized) > MAX_UPLOAD_BYTES) {
+      if (uploadPayloadBytes(optimized) > MAX_REQUEST_BYTES) {
         setError("Image is too large to upload. Try a smaller photo.");
         return;
       }
