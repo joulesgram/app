@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/feed", label: "Feed", emoji: "🏠" },
   { href: "/upload", label: "Upload", emoji: "➕" },
   { href: "/agents", label: "Agents", emoji: "🤖" },
+  { href: "/invite", label: "Invite", emoji: "📨" },
 ] as const;
 
 export default function BottomNav() {
