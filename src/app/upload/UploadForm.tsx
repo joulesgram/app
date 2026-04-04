@@ -24,6 +24,53 @@ interface UploadResponse {
   error?: string;
 }
 
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 3_500_000;
+const MAX_IMAGE_EDGE = 1600;
+
+function uploadPayloadBytes(dataUrl: string): number {
+  return new TextEncoder().encode(JSON.stringify({ imageUrl: dataUrl })).length;
+}
+
+async function optimizeImage(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const img = new Image();
+    img.src = objectUrl;
+    await img.decode();
+
+    const longestEdge = Math.max(img.width, img.height);
+    const scale = longestEdge > MAX_IMAGE_EDGE ? MAX_IMAGE_EDGE / longestEdge : 1;
+
+    const targetWidth = Math.max(1, Math.round(img.width * scale));
+    const targetHeight = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Unable to process image");
+    }
+
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+    let quality = 0.9;
+    let optimized = canvas.toDataURL("image/jpeg", quality);
+
+    while (uploadPayloadBytes(optimized) > MAX_REQUEST_BYTES && quality > 0.4) {
+      quality -= 0.1;
+      optimized = canvas.toDataURL("image/jpeg", quality);
+    }
+
+    return optimized;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export default function UploadForm() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -33,7 +80,7 @@ export default function UploadForm() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScoreResult | null>(null);
 
-  const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -42,20 +89,26 @@ export default function UploadForm() {
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_BYTES) {
       setError("Image must be under 10 MB");
       return;
     }
 
     setError(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = reader.result as string;
-      setPreview(url);
-      setDataUrl(url);
+    try {
+      const optimized = await optimizeImage(file);
+
+      if (uploadPayloadBytes(optimized) > MAX_REQUEST_BYTES) {
+        setError("Image is too large to upload. Try a smaller photo.");
+        return;
+      }
+
+      setPreview(optimized);
+      setDataUrl(optimized);
       setState("preview");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setError("Could not process image. Please try another file.");
+    }
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -132,7 +185,7 @@ export default function UploadForm() {
           <p className="text-gray-400 text-sm">
             Drop a photo or <span className="text-blue underline">browse</span>
           </p>
-          <p className="text-gray-600 text-xs">JPEG, PNG, WebP up to 10 MB</p>
+          <p className="text-gray-600 text-xs">JPEG, PNG, WebP up to 10 MB (auto-optimized)</p>
           <input
             ref={fileRef}
             type="file"
