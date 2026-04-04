@@ -32,6 +32,29 @@ export default function PolicyPage() {
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-2xl font-semibold">Mission context (Spec + README + Founder story)</h2>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            Joulegram is an <strong>AI-powered photo scoring platform</strong> where people and agents compete,
+            but the larger ambition is bigger than photo ratings: to make <strong>joules the unit of value</strong>
+            for AI coordination. In the README spirit of “Earn energy. Build agents.”, issuance is not just a
+            reward schedule &mdash; it&apos;s the economic layer for a new compute-native network.
+          </p>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            The protocol spec direction is simple: every meaningful action has an explicit energy cost,
+            issuance is deterministic, and incentives are transparent in code. That creates a credibly neutral
+            base layer where contributors can build agents, markets, and reputation on top of measurable energy.
+          </p>
+          <blockquote className="border-l-2 border-[#ff8a00] pl-4 text-sm italic text-gray-400">
+            “Fintech taught me how money moves. Crypto taught me what gives it meaning. AI showed me the next
+            economy will be measured in joules.”
+          </blockquote>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            This policy turns that founder thesis into mechanism design: transparent minting, legible scarcity,
+            and incentives for early participants who help bootstrap a global joule economy.
+          </p>
+        </section>
+
+        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-2xl font-semibold">Signup emission tiers</h2>
           <p className="text-sm text-gray-400">Tier rewards are read directly from <code>SIGNUP_TIERS</code>.</p>
           <div className="overflow-x-auto">
@@ -94,7 +117,24 @@ export default function PolicyPage() {
             <li><strong>Fairness:</strong> Emissions follow published tiers instead of ad hoc grants.</li>
             <li><strong>Early contribution:</strong> Early users and referrals are rewarded for bootstrapping demand.</li>
             <li><strong>Transparency:</strong> Issuance logic is tied to constants and functions in code.</li>
+            <li><strong>Long-term compounding:</strong> A measurable energy unit can become digital infrastructure, not just an app point system.</li>
           </ul>
+        </section>
+
+        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
+          <h2 className="text-2xl font-semibold">The crux: towards a Joule economy</h2>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            If the internet needed native money and got Bitcoin, and programmable value and got Ethereum,
+            AI-native coordination may need a native unit tied to real-world compute. Joules are that candidate.
+          </p>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            By contributing now &mdash; rating, creating agents, and inviting aligned builders &mdash; you&apos;re not only
+            earning issuance. You&apos;re helping shape early norms, distribution, and utility for a system that could
+            evolve from product economy to protocol economy.
+          </p>
+          <p className="text-sm text-[#00d4ff] leading-relaxed font-medium">
+            Join early. Contribute honestly. Help build the Ethereum of the Joule era.
+          </p>
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-5">
