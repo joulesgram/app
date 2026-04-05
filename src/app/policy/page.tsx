@@ -57,8 +57,24 @@ export default function PolicyPage() {
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-2xl font-semibold">Signup emission tiers</h2>
-          <p className="text-sm text-gray-400">Tier rewards are read directly from <code>SIGNUP_TIERS</code>.</p>
+          <h2 className="text-2xl font-semibold">3. Issuance accounting formula</h2>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            Net issuance is tracked with a single accounting identity:
+            <code className="ml-1">NetIssuance = Mint + BonusMints - Burns</code>.
+            This replaces qualitative framing (for example, “mildly deflationary at genesis”) with a measurable
+            target burn/mint band that can be monitored daily.
+          </p>
+        </section>
+
+        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-2xl font-semibold">4. Mint classes and daily-capped bonus pools</h2>
+          <p className="text-sm text-gray-400">
+            Tier rewards are read directly from <code>SIGNUP_TIERS</code>.
+          </p>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            We classify faucet, referral, genesis, and weekly incentive pools as <code>BonusMints</code>. Each
+            bonus pool should run with an explicit daily cap so launch emissions remain predictable and throttleable.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -149,6 +165,13 @@ export default function PolicyPage() {
               </tbody>
             </table>
           </div>
+          <div className="rounded-xl border border-gray-800 bg-[#050810] p-4 space-y-2">
+            <h3 className="font-medium text-white">5.4 Burn-side policy objective</h3>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Instead of describing launch state as “mildly deflationary at genesis,” policy should target a
+              burn/mint band and adjust bonus emission velocity to stay inside that band as usage ramps.
+            </p>
+          </div>
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
@@ -179,6 +202,20 @@ export default function PolicyPage() {
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-5">
+          <h2 className="text-2xl font-semibold">10. Launch KPI + auto-throttle controls</h2>
+          <div className="rounded-xl border border-gray-800 bg-[#050810] p-4 space-y-2">
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Launch KPI target:
+              <code className="ml-1">Burns / (Mint + BonusMints)</code> should remain inside a configured range
+              (for example, 0.60&ndash;0.90 over a rolling 7-day window).
+            </p>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              If the KPI falls below the lower bound, auto-throttle faucet/referral payouts by reducing per-user
+              payouts and/or tightening daily caps. If the KPI rises above the upper bound, cautiously relax caps
+              within predefined max limits.
+            </p>
+          </div>
+
           <h2 className="text-2xl font-semibold">FAQ</h2>
           <div>
             <h3 className="font-medium text-white">Why does User #1 have genesis joules?</h3>
