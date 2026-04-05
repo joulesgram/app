@@ -161,10 +161,15 @@ async function processReferralChain(
   referralCode: string,
   newUserId: string
 ) {
+  const MAX_CHAIN_DEPTH = 10;
+  const visited = new Set<string>();
   let currentCode: string | null = referralCode;
   let level = 1;
 
   while (currentCode) {
+    if (level > MAX_CHAIN_DEPTH || visited.has(currentCode)) break;
+    visited.add(currentCode);
+
     const ancestor: PrismaUser | null = await prisma.user.findUnique({
       where: { referralCode: currentCode },
     });

@@ -238,19 +238,6 @@ Respond ONLY with valid JSON matching this exact schema:
     const perAgentJoules =
       agentScores.length > 0 ? computeJoules / agentScores.length : 0;
 
-    // Save agent ratings
-    for (const as_ of agentScores) {
-      await prisma.agentRating.create({
-        data: {
-          photoId,
-          agentId: as_.agentId,
-          score: as_.score,
-          critique: as_.critique,
-          computeJoules: perAgentJoules,
-        },
-      });
-    }
-
     // Validate and store category
     const detectedCategory = VALID_CATEGORIES.includes(
       parsed.category?.toLowerCase() as typeof VALID_CATEGORIES[number]
@@ -261,48 +248,69 @@ Respond ONLY with valid JSON matching this exact schema:
     // Determine if published (meets threshold)
     const published = aiScore !== null && aiScore >= PUBLISH_THRESHOLD;
 
-    // Update photo with AI score, critique, compute cost, NSFW flag, and category
-    await prisma.photo.update({
-      where: { id: photoId },
-      data: {
-        aiScore,
-        critique: parsed.overall_critique,
-        computeKJ,
-        nsfw: parsed.nsfw,
-        category: detectedCategory,
-      },
+    const uploadReward = 5;
+    const userId = session.user.id!;
+
+    // Atomic transaction: save all DB writes together with balance guard
+    await prisma.$transaction(async (tx) => {
+      // 1. Save agent ratings
+      for (const as_ of agentScores) {
+        await tx.agentRating.create({
+          data: {
+            photoId,
+            agentId: as_.agentId,
+            score: as_.score,
+            critique: as_.critique,
+            computeJoules: perAgentJoules,
+          },
+        });
+      }
+
+      // 2. Update photo with AI score, critique, compute cost, NSFW flag, and category
+      await tx.photo.update({
+        where: { id: photoId },
+        data: {
+          aiScore,
+          critique: parsed.overall_critique,
+          computeKJ,
+          nsfw: parsed.nsfw,
+          category: detectedCategory,
+        },
+      });
+
+      // 3. Deduct scoring cost — guarded against negative balance
+      const deducted = await tx.user.updateMany({
+        where: { id: userId, coins: { gte: PHOTO_SCORE_KJ } },
+        data: { coins: { decrement: PHOTO_SCORE_KJ } },
+      });
+      if (deducted.count === 0) {
+        throw new Error("Insufficient energy for scoring");
+      }
+
+      await tx.coinTransaction.create({
+        data: {
+          userId,
+          amount: -PHOTO_SCORE_KJ,
+          description: `Photo AI scoring (${PHOTO_SCORE_KJ} kJ)`,
+        },
+      });
+
+      // 4. Credit upload reward
+      await tx.user.update({
+        where: { id: userId },
+        data: { coins: { increment: uploadReward } },
+      });
+
+      await tx.coinTransaction.create({
+        data: {
+          userId,
+          amount: uploadReward,
+          description: "Upload reward (5 kJ)",
+        },
+      });
     });
 
     console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
-
-    // Deduct scoring cost from user
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { decrement: PHOTO_SCORE_KJ } },
-    });
-
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: -PHOTO_SCORE_KJ,
-        description: `Photo AI scoring (${PHOTO_SCORE_KJ} kJ)`,
-      },
-    });
-
-    // Credit 5 kJ for uploading
-    const uploadReward = 5;
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { increment: uploadReward } },
-    });
-
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: uploadReward,
-        description: "Upload reward (5 kJ)",
-      },
-    });
 
     return NextResponse.json({
       photoId,
@@ -320,6 +328,9 @@ Respond ONLY with valid JSON matching this exact schema:
       tokens: { input: inputTokens, output: outputTokens },
     });
   } catch (e) {
+    if (e instanceof Error && e.message === "Insufficient energy for scoring") {
+      return NextResponse.json({ error: e.message }, { status: 402 });
+    }
     console.error("Score API error:", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

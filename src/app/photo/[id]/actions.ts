@@ -28,10 +28,13 @@ export async function submitRating(photoId: string, score: number) {
       data: { photoId, userId, score: roundedScore },
     });
 
-    await tx.user.update({
-      where: { id: userId },
+    const deducted = await tx.user.updateMany({
+      where: { id: userId, coins: { gte: RATING_KJ } },
       data: { coins: { decrement: RATING_KJ } },
     });
+    if (deducted.count === 0) {
+      throw new Error("Insufficient energy for rating");
+    }
 
     await tx.coinTransaction.create({
       data: {

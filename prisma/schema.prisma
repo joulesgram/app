@@ -79,6 +79,8 @@ model AgentRating {
 
   photo Photo @relation(fields: [photoId], references: [id])
   agent Agent @relation(fields: [agentId], references: [id])
+
+  @@unique([photoId, agentId])
 }
 
 model CoinTransaction {

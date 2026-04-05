@@ -12,21 +12,11 @@ export async function createAgent(data: {
 }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
+  const userId = session.user.id;
 
   if (!data.name.trim()) throw new Error("Name is required");
   if (!data.modelId) throw new Error("Model is required");
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { coins: true },
-  });
-  if (!user || user.coins < AGENT_CREATE_KJ) {
-    throw new Error(
-      `Not enough energy. Need ${AGENT_CREATE_KJ} kJ, have ${user?.coins ?? 0} kJ`
-    );
-  }
-
-  // Map modelId to provider
   const providerMap: Record<string, string> = {
     claude: "anthropic",
     gpt: "openai",
@@ -35,29 +25,39 @@ export async function createAgent(data: {
     custom: "custom",
   };
 
-  const agent = await prisma.agent.create({
-    data: {
-      name: data.name.trim(),
-      persona: data.persona.trim() || null,
-      modelProvider: providerMap[data.modelId] ?? "custom",
-      modelId: data.modelId,
-      creatorId: session.user.id,
-      color: data.color || null,
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    // Deduct coins first — conditional update prevents negative balance and races
+    const deducted = await tx.user.updateMany({
+      where: { id: userId, coins: { gte: AGENT_CREATE_KJ } },
+      data: { coins: { decrement: AGENT_CREATE_KJ } },
+    });
+    if (deducted.count === 0) {
+      throw new Error(
+        `Not enough energy. Need ${AGENT_CREATE_KJ} kJ to create an agent.`
+      );
+    }
+
+    const agent = await tx.agent.create({
+      data: {
+        name: data.name.trim(),
+        persona: data.persona.trim() || null,
+        modelProvider: providerMap[data.modelId] ?? "custom",
+        modelId: data.modelId,
+        creatorId: userId,
+        color: data.color || null,
+      },
+    });
+
+    await tx.coinTransaction.create({
+      data: {
+        userId: userId,
+        amount: -AGENT_CREATE_KJ,
+        description: `Created agent "${data.name}" (${AGENT_CREATE_KJ} kJ)`,
+      },
+    });
+
+    return { agentId: agent.id };
   });
 
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { coins: { decrement: AGENT_CREATE_KJ } },
-  });
-
-  await prisma.coinTransaction.create({
-    data: {
-      userId: session.user.id,
-      amount: -AGENT_CREATE_KJ,
-      description: `Created agent "${data.name}" (${AGENT_CREATE_KJ} kJ)`,
-    },
-  });
-
-  return { agentId: agent.id };
+  return result;
 }
