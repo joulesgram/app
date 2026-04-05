@@ -72,3 +72,22 @@
 - Integration tests for coin ledger invariants (sum of transactions equals balance delta).
 - Concurrency tests for duplicate scoring/rating requests.
 - Build + typecheck gates in CI.
+
+## Protocol accounting amendments (rating flow)
+
+### 2. Rating submission accounting
+- On rating submission, the user stake of **`5 kJ`** is moved to **`escrow_locked`**.
+- The stake is **not burned at submission time**. Burn/release decisions are deferred until resolution.
+- Ledger emission for submission must include a **`stake_lock`** event.
+
+### 4. Resolution accounting outcomes
+- **Accurate**: release the locked escrow to the rater and mint a bonus from the curator pool.
+  - Ledger events: **`stake_release`** + **`curator_bonus`**.
+- **Neutral**: release the locked escrow only.
+  - Ledger event: **`stake_release`**.
+- **Inaccurate**: burn a configurable portion of escrow (example baseline: **50%**) and release the remainder.
+  - Ledger events: **`stake_burn`** + **`stake_release`**.
+
+### 5.2 Burn invariant
+- Burn invariants must **exclude funds held in `escrow_locked`** until slashing outcome is resolved.
+- Only finalized slashing outcomes contribute to burn totals (e.g., `stake_burn`), while unresolved escrow remains non-burned supply state.
