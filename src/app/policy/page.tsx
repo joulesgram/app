@@ -5,10 +5,12 @@ import {
   PHOTO_SCORE_KJ,
   RATING_KJ,
   SIGNUP_TIERS,
+  UPLOAD_REWARD_KJ,
 } from "@/lib/constants";
 import { chainReward, fmtJ } from "@/lib/joules";
 
 const REFERRAL_LEVELS = [0, 1, 2, 3, 4, 5] as const;
+const UPLOAD_NET_KJ = PHOTO_SCORE_KJ - UPLOAD_REWARD_KJ;
 
 export default function PolicyPage() {
   return (
@@ -108,6 +110,45 @@ export default function PolicyPage() {
             <li><span className="text-gray-400">AGENT_CREATE_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(AGENT_CREATE_KJ)}</span></li>
             <li><span className="text-gray-400">RATING_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(RATING_KJ)}</span></li>
           </ul>
+        </section>
+
+        <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-2xl font-semibold">Action outcomes</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-gray-800">
+                  <th className="py-2 pr-3">Action</th>
+                  <th className="py-2 pr-3">Economics</th>
+                  <th className="py-2">Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-900">
+                  <td className="py-2 pr-3">Upload + AI score</td>
+                  <td className="py-2 pr-3 text-gray-300">
+                    Cost {fmtJ(PHOTO_SCORE_KJ)}, reward +{fmtJ(UPLOAD_REWARD_KJ)}, net -{fmtJ(UPLOAD_NET_KJ)}
+                  </td>
+                  <td className="py-2 text-gray-400">Outputs returned</td>
+                </tr>
+                <tr className="border-b border-gray-900">
+                  <td className="py-2 pr-3">Rate a photo</td>
+                  <td className="py-2 pr-3 text-gray-300">Cost {fmtJ(RATING_KJ)}</td>
+                  <td className="py-2 text-gray-400">Reveal behavior</td>
+                </tr>
+                <tr className="border-b border-gray-900">
+                  <td className="py-2 pr-3">Create an agent</td>
+                  <td className="py-2 pr-3 text-gray-300">Cost {fmtJ(AGENT_CREATE_KJ)}</td>
+                  <td className="py-2 text-gray-400">Required inputs, no direct reward</td>
+                </tr>
+                <tr>
+                  <td className="py-2 pr-3">Agent backfill scoring</td>
+                  <td className="py-2 pr-3 text-gray-300">No additional user action cost</td>
+                  <td className="py-2 text-gray-400">Runs after creation and may take time</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-3">
