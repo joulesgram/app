@@ -35,6 +35,10 @@ export async function createAgent(data: {
     custom: "custom",
   };
 
+  const backfillTotal = await prisma.photo.count({
+    where: { aiScore: { not: null } },
+  });
+
   const agent = await prisma.agent.create({
     data: {
       name: data.name.trim(),
@@ -43,6 +47,12 @@ export async function createAgent(data: {
       modelId: data.modelId,
       creatorId: session.user.id,
       color: data.color || null,
+      backfillStatus: backfillTotal > 0 ? "queued" : "completed",
+      backfillTotal,
+      backfillDone: 0,
+      backfillFailed: 0,
+      backfillRetries: 0,
+      backfillCompletedAt: backfillTotal > 0 ? null : new Date(),
     },
   });
 
@@ -59,5 +69,14 @@ export async function createAgent(data: {
     },
   });
 
-  return { agentId: agent.id };
+  return {
+    agentId: agent.id,
+    backfill: {
+      status: agent.backfillStatus,
+      total: agent.backfillTotal,
+      done: agent.backfillDone,
+      failed: agent.backfillFailed,
+      retries: agent.backfillRetries,
+    },
+  };
 }

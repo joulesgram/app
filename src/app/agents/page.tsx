@@ -15,6 +15,17 @@ interface AgentWithStats {
   creatorName: string;
 }
 
+interface BackfillJob {
+  agentId: string;
+  agentName: string;
+  status: "queued" | "running" | "completed" | "failed";
+  total: number;
+  done: number;
+  failed: number;
+  retries: number;
+  error: string | null;
+}
+
 export default async function AgentsPage() {
   const session = await auth();
   if (!session?.user) redirect("/");
@@ -27,6 +38,21 @@ export default async function AgentsPage() {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const myBackfills: BackfillJob[] = session.user.id
+    ? agents
+        .filter((a) => a.creatorId === session.user.id)
+        .map((a) => ({
+          agentId: a.id,
+          agentName: a.name,
+          status: a.backfillStatus as BackfillJob["status"],
+          total: a.backfillTotal,
+          done: a.backfillDone,
+          failed: a.backfillFailed,
+          retries: a.backfillRetries,
+          error: a.backfillLastError,
+        }))
+    : [];
 
   // Fetch human rating averages per photo (for accuracy + gap calc)
   const humanAvgByPhoto = new Map<string, number>();
@@ -169,6 +195,7 @@ export default async function AgentsPage() {
           richAgents={richAgents}
           gapAgents={gapAgents}
           isLoggedIn={!!session?.user}
+          initialBackfillJobs={myBackfills}
         />
       </div>
       <BottomNav />

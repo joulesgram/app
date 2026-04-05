@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AgentBadge from "@/components/AgentBadge";
 import { MODELS, AGENT_CREATE_KJ } from "@/lib/constants";
@@ -38,6 +38,30 @@ interface AgentsViewProps {
   richAgents: RichAgent[];
   gapAgents: GapAgent[];
   isLoggedIn: boolean;
+  initialBackfillJobs: BackfillJob[];
+}
+
+interface BackfillJob {
+  agentId: string;
+  agentName: string;
+  status: "queued" | "running" | "completed" | "failed";
+  total: number;
+  done: number;
+  failed: number;
+  retries: number;
+  error: string | null;
+}
+
+function asJobStatus(value: string): BackfillJob["status"] {
+  if (
+    value === "queued" ||
+    value === "running" ||
+    value === "completed" ||
+    value === "failed"
+  ) {
+    return value;
+  }
+  return "queued";
 }
 
 type Tab = "best" | "rich" | "gaps";
@@ -58,6 +82,7 @@ export default function AgentsView({
   richAgents,
   gapAgents,
   isLoggedIn,
+  initialBackfillJobs,
 }: AgentsViewProps) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("best");
@@ -69,9 +94,59 @@ export default function AgentsView({
   const [persona, setPersona] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [submitting, setSubmitting] = useState(false);
-  const [scoring, setScoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [backfillJobs, setBackfillJobs] = useState<BackfillJob[]>(
+    initialBackfillJobs
+  );
+
+  useEffect(() => {
+    setBackfillJobs(initialBackfillJobs);
+  }, [initialBackfillJobs]);
+
+  useEffect(() => {
+    const hasActive = backfillJobs.some(
+      (job) => job.status === "queued" || job.status === "running"
+    );
+    if (!hasActive) return;
+
+    const timer = setInterval(async () => {
+      const activeJobs = backfillJobs.filter(
+        (job) => job.status === "queued" || job.status === "running"
+      );
+
+      for (const job of activeJobs) {
+        try {
+          const processRes = await fetch("/api/score-agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId: job.agentId }),
+          });
+          if (!processRes.ok) continue;
+          const processPayload = await processRes.json();
+          setBackfillJobs((prev) =>
+            prev.map((item) =>
+              item.agentId === job.agentId
+                ? {
+                    ...item,
+                    status: asJobStatus(processPayload.status),
+                    total: processPayload.total,
+                    done: processPayload.done,
+                    failed: processPayload.failed,
+                    retries: processPayload.retries,
+                    error: processPayload.error ?? null,
+                  }
+                : item
+            )
+          );
+        } catch {
+          // Keep polling; transient network errors are expected.
+        }
+      }
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [backfillJobs]);
 
   const handleCreate = useCallback(async () => {
     if (!isLoggedIn) {
@@ -83,28 +158,39 @@ export default function AgentsView({
     setSubmitting(true);
 
     try {
-      const { agentId } = await createAgent({ name, modelId, persona, color });
-
-      // Score all existing photos with the new agent
-      setSubmitting(false);
-      setScoring(true);
-
-      await fetch("/api/score-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
+      const { agentId, backfill } = await createAgent({
+        name,
+        modelId,
+        persona,
+        color,
       });
 
-      setScoring(false);
+      setSubmitting(false);
       setShowForm(false);
       setName("");
       setPersona("");
-      setSuccess(`Agent created. You spent ${fmtJ(AGENT_CREATE_KJ)}.`);
+      setSuccess(
+        `Agent created. Backfill queued in the background. You spent ${fmtJ(
+          AGENT_CREATE_KJ
+        )}.`
+      );
+      setBackfillJobs((prev) => [
+        {
+          agentId,
+          agentName: name.trim(),
+          status: asJobStatus(backfill.status),
+          total: backfill.total,
+          done: backfill.done,
+          failed: backfill.failed,
+          retries: backfill.retries,
+          error: null,
+        },
+        ...prev.filter((item) => item.agentId !== agentId),
+      ]);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create agent");
       setSubmitting(false);
-      setScoring(false);
     }
   }, [name, modelId, persona, color, isLoggedIn, router]);
 
@@ -113,6 +199,10 @@ export default function AgentsView({
     { key: "rich", label: "Energy Rich" },
     { key: "gaps", label: "AI vs Humans" },
   ];
+
+  const activeJobs = backfillJobs.filter(
+    (job) => job.status === "queued" || job.status === "running"
+  );
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6">
@@ -133,6 +223,37 @@ export default function AgentsView({
             <span className="font-medium">Create Agent</span>
             <span className="text-xs text-gray-600">({fmtJ(AGENT_CREATE_KJ)})</span>
           </button>
+          {activeJobs.length > 0 && (
+            <div className="space-y-2">
+              {activeJobs.map((job) => {
+                const pct =
+                  job.total > 0
+                    ? Math.min(100, Math.round((job.done / job.total) * 100))
+                    : 100;
+                return (
+                  <div
+                    key={job.agentId}
+                    className="bg-card border border-gray-800 rounded-xl p-3"
+                  >
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span>
+                        {job.agentName}: {job.status}
+                      </span>
+                      <span>
+                        {job.done}/{job.total} ({pct}%)
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-800 rounded-full mt-2 overflow-hidden">
+                      <div
+                        className="h-full bg-blue transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-card border border-gray-800 rounded-xl p-6 space-y-5">
@@ -255,18 +376,13 @@ export default function AgentsView({
           {/* Submit */}
           <button
             onClick={handleCreate}
-            disabled={!name.trim() || submitting || scoring}
+            disabled={!name.trim() || submitting}
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-deepblue to-blue
                        text-white font-semibold py-3 rounded-xl transition-all
                        hover:shadow-[0_0_24px_rgba(0,212,255,0.3)] active:scale-[0.98]
                        disabled:opacity-50 disabled:pointer-events-none"
           >
-            {scoring ? (
-              <>
-                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Scoring existing photos...
-              </>
-            ) : submitting ? (
+            {submitting ? (
               <>
                 <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Creating...

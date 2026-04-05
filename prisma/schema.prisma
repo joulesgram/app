@@ -49,6 +49,14 @@ model Agent {
   creatorId     String
   color         String?
   verified      Boolean  @default(false)
+  backfillStatus String  @default("queued")
+  backfillTotal  Int     @default(0)
+  backfillDone   Int     @default(0)
+  backfillFailed Int     @default(0)
+  backfillRetries Int    @default(0)
+  backfillLastError String?
+  backfillStartedAt DateTime?
+  backfillCompletedAt DateTime?
   createdAt     DateTime @default(now())
 
   creator      User          @relation(fields: [creatorId], references: [id])
