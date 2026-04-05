@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AgentBadge from "@/components/AgentBadge";
 import { MODELS, AGENT_CREATE_KJ } from "@/lib/constants";
@@ -70,8 +70,44 @@ export default function AgentsView({
   const [color, setColor] = useState(COLORS[0]);
   const [submitting, setSubmitting] = useState(false);
   const [scoring, setScoring] = useState(false);
+  const [suggestingPersona, setSuggestingPersona] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [personaError, setPersonaError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const canSuggestPersona = useMemo(
+    () => Boolean(name.trim() && modelId),
+    [name, modelId]
+  );
+
+  const handleSuggestPersona = useCallback(async () => {
+    if (!canSuggestPersona || suggestingPersona) return;
+
+    setPersonaError(null);
+    setError(null);
+    setSuggestingPersona(true);
+
+    try {
+      const response = await fetch("/api/agent-persona", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), modelId }),
+      });
+
+      const data = (await response.json()) as { suggestion?: string; error?: string };
+      if (!response.ok || !data.suggestion) {
+        throw new Error(data.error || "Failed to suggest persona");
+      }
+
+      setPersona(data.suggestion);
+    } catch (e) {
+      setPersonaError(
+        e instanceof Error ? e.message : "Failed to suggest persona"
+      );
+    } finally {
+      setSuggestingPersona(false);
+    }
+  }, [canSuggestPersona, suggestingPersona, name, modelId]);
 
   const handleCreate = useCallback(async () => {
     if (!isLoggedIn) {
@@ -89,17 +125,37 @@ export default function AgentsView({
       setSubmitting(false);
       setScoring(true);
 
-      await fetch("/api/score-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-      });
+      let scoreWarning: string | null = null;
+      const abortController = new AbortController();
+      const timeout = window.setTimeout(() => abortController.abort(), 45000);
+
+      try {
+        const scoreRes = await fetch("/api/score-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId }),
+          signal: abortController.signal,
+        });
+
+        if (!scoreRes.ok) {
+          const data = (await scoreRes.json()) as { error?: string };
+          scoreWarning = data.error || "Agent created, but photo scoring did not finish.";
+        }
+      } catch {
+        scoreWarning = "Agent created, but photo scoring timed out. You can keep using the app while scoring catches up.";
+      } finally {
+        window.clearTimeout(timeout);
+      }
 
       setScoring(false);
       setShowForm(false);
       setName("");
       setPersona("");
+      setPersonaError(null);
       setSuccess(`Agent created. You spent ${fmtJ(AGENT_CREATE_KJ)}.`);
+      if (scoreWarning) {
+        setError(scoreWarning);
+      }
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create agent");
@@ -142,6 +198,7 @@ export default function AgentsView({
               onClick={() => {
                 setShowForm(false);
                 setError(null);
+                setPersonaError(null);
               }}
               className="text-gray-500 hover:text-gray-300 text-sm"
             >
@@ -190,9 +247,19 @@ export default function AgentsView({
 
           {/* Persona */}
           <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wider">
-              Persona
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs text-gray-500 uppercase tracking-wider">
+                Persona
+              </label>
+              <button
+                type="button"
+                onClick={handleSuggestPersona}
+                disabled={!canSuggestPersona || suggestingPersona || submitting || scoring}
+                className="text-xs px-2.5 py-1 rounded-md border border-gray-700 text-gray-300 hover:border-blue hover:text-blue transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {suggestingPersona ? "Suggesting..." : "Suggest persona"}
+              </button>
+            </div>
             <textarea
               value={persona}
               onChange={(e) => setPersona(e.target.value)}
@@ -202,6 +269,9 @@ export default function AgentsView({
               className="mt-1 w-full bg-bg border border-gray-700 rounded-lg px-3 py-2.5 text-sm
                          resize-none focus:border-blue focus:outline-none transition-colors"
             />
+            {personaError && (
+              <p className="text-red-400 text-xs mt-1">{personaError}</p>
+            )}
             <p className="text-right text-xs text-gray-600 mt-1">
               {persona.length}/500
             </p>
