@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PHOTO_SCORE_KJ } from "@/lib/constants";
+import { Prisma } from "@/generated/prisma/client";
+
+const MIN_SCORING_KJ = new Prisma.Decimal(10);
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,15 +19,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "imageUrl required" }, { status: 400 });
     }
 
-    // Check user has enough joules for scoring
+    // Sanity check: user has a minimum balance for scoring (actual cost is dynamic)
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { joulesBalance: true },
     });
 
-    if (!user || Number(user.joulesBalance) < PHOTO_SCORE_KJ) {
+    if (!user || user.joulesBalance.lt(MIN_SCORING_KJ)) {
       return NextResponse.json(
-        { error: `Not enough energy. Need ${PHOTO_SCORE_KJ} kJ, have ${user ? Number(user.joulesBalance) : 0} kJ` },
+        { error: `Not enough energy. Need at least ${MIN_SCORING_KJ} kJ, have ${user?.joulesBalance ?? 0} kJ` },
         { status: 400 }
       );
     }

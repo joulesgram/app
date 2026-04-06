@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PHOTO_SCORE_KJ, PUBLISH_THRESHOLD } from "@/lib/constants";
+import { PUBLISH_THRESHOLD } from "@/lib/constants";
 import { fmtJ } from "@/lib/joules";
 
 type UploadState = "idle" | "preview" | "uploading" | "scoring" | "done" | "error";
@@ -232,7 +232,7 @@ export default function UploadForm() {
             Upload &amp; Score
           </button>
           <p className="text-center text-xs text-gray-500">
-            Costs {fmtJ(PHOTO_SCORE_KJ)} for AI scoring. You earn 5 kJ for
+            Scoring cost is dynamic (based on token usage). You earn 5 kJ for
             uploading.
           </p>
         </div>
@@ -272,7 +272,7 @@ export default function UploadForm() {
             </p>
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-400">AI scoring cost</span>
-              <span className="text-red-300">-{fmtJ(PHOTO_SCORE_KJ)}</span>
+              <span className="text-red-300">-{fmtJ(result.computeKJ)}</span>
             </div>
             <div className="flex items-center justify-between text-sm mt-1">
               <span className="text-gray-400">Upload reward</span>
@@ -280,7 +280,7 @@ export default function UploadForm() {
             </div>
             <div className="mt-2 pt-2 border-t border-blue/20 flex items-center justify-between text-sm font-semibold">
               <span>Net change</span>
-              <span className="text-blue">-{fmtJ(PHOTO_SCORE_KJ - 5)}</span>
+              <span className="text-blue">-{fmtJ(result.computeKJ - 5)}</span>
             </div>
           </div>
 

@@ -26,6 +26,7 @@ enum AgentType {
 
 enum ScoreStatus {
   PENDING
+  SCORING
   SCORED
   FAILED
 }
