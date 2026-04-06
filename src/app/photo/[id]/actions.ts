@@ -1,14 +1,17 @@
 "use server";
 
+import { Decimal } from "decimal.js";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RATING_KJ } from "@/lib/constants";
+
+const ratingCostJ = new Decimal(RATING_KJ).times(1000);
 
 export async function submitRating(photoId: string, score: number) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
-  if (score < 1 || score > 5) throw new Error("Score must be 1.0–5.0");
+  if (score < 1 || score > 5) throw new Error("Score must be 1.0-5.0");
 
   const photo = await prisma.photo.findUnique({ where: { id: photoId } });
   if (!photo) throw new Error("Photo not found");
@@ -22,22 +25,32 @@ export async function submitRating(photoId: string, score: number) {
   const roundedScore = Math.round(score * 10) / 10;
   const userId = session.user.id;
 
-  // Use a transaction so rating + coin deduction are atomic
+  // Use a transaction so rating + joule deduction are atomic
   const rating = await prisma.$transaction(async (tx) => {
     const r = await tx.humanRating.create({
       data: { photoId, userId, score: roundedScore },
     });
 
-    await tx.user.update({
+    // Atomic CAS for balance deduction
+    const updated = await tx.user.updateMany({
+      where: { id: userId, joulesBalance: { gte: ratingCostJ } },
+      data: { joulesBalance: { decrement: ratingCostJ } },
+    });
+    if (updated.count === 0) throw new Error("Insufficient balance");
+
+    const user = await tx.user.findUniqueOrThrow({
       where: { id: userId },
-      data: { coins: { decrement: RATING_KJ } },
+      select: { joulesBalance: true },
     });
 
-    await tx.coinTransaction.create({
+    await tx.ledgerEntry.create({
       data: {
         userId,
-        amount: -RATING_KJ,
-        description: `Rated photo (${RATING_KJ} kJ)`,
+        entryType: "RATING_STAKE",
+        amount: ratingCostJ.negated(),
+        balanceAfter: user.joulesBalance,
+        referenceType: "rating",
+        referenceId: r.id,
       },
     });
 

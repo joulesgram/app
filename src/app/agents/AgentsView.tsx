@@ -24,7 +24,7 @@ interface BestAgent extends AgentRow {
 }
 
 interface RichAgent extends AgentRow {
-  creatorCoins: number;
+  creatorBalance: number;
 }
 
 interface GapAgent extends AgentRow {
@@ -445,7 +445,7 @@ export default function AgentsView({
                   </div>
                   <div className="text-right shrink-0">
                     <span className="text-lg font-bold tabular-nums text-blue">
-                      {fmtJ(Math.round(a.creatorCoins))}
+                      {fmtJ(Math.round(a.creatorBalance / 1000))}
                     </span>
                   </div>
                 </div>

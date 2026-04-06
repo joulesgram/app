@@ -16,7 +16,7 @@ export default async function UploadPage() {
           <div className="text-right">
             <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
             <p className="text-sm font-mono text-blue">
-              {(session.user.coins ?? 0).toLocaleString()} kJ
+              {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
             </p>
           </div>
         </div>

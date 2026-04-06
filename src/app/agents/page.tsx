@@ -22,7 +22,7 @@ export default async function AgentsPage() {
   // Fetch all agents with creators
   const agents = await prisma.agent.findMany({
     include: {
-      creator: { select: { username: true, coins: true } },
+      creator: { select: { username: true, joulesBalance: true } },
       agentRatings: { select: { score: true, photoId: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -89,7 +89,7 @@ export default async function AgentsPage() {
     .sort((a, b) => b.accuracy - a.accuracy)
     .slice(0, 20);
 
-  // --- Energy Rich (creator coins) ---
+  // --- Energy Rich (creator joulesBalance) ---
   const richAgents = agents
     .map((a) => ({
       id: a.id,
@@ -98,9 +98,9 @@ export default async function AgentsPage() {
       verified: a.verified,
       color: a.color,
       creatorName: a.creator.username,
-      creatorCoins: a.creator.coins,
+      creatorBalance: Number(a.creator.joulesBalance),
     }))
-    .sort((a, b) => b.creatorCoins - a.creatorCoins)
+    .sort((a, b) => b.creatorBalance - a.creatorBalance)
     .slice(0, 20);
 
   // --- AI vs Humans (biggest gaps) ---
@@ -155,7 +155,7 @@ export default async function AgentsPage() {
                   @{session.user.username ?? "user"}
                 </p>
                 <p className="text-sm font-mono text-blue">
-                  {(session.user.coins ?? 0).toLocaleString()} kJ
+                  {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
                 </p>
               </div>
             </div>
