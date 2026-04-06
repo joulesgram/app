@@ -18,7 +18,10 @@ import { createHash } from "node:crypto";
 
 const TREASURY_USER_ID = "treasury_system";
 const BOOTSTRAP_POOL_ID = "pre_scale_v1";
-const BOOTSTRAP_POOL_KJ = 10_000_000; // 10 MJ
+// 10 MJ = 10,000 kJ. Prior value (10_000_000) was 1000x too large
+// (it read as "10,000,000 kJ" = 10 GJ), contradicting the cost-ceiling
+// math in PRE_SCALE_MODE_SPEC.md §4 and §5.
+const BOOTSTRAP_POOL_KJ = 10_000; // 10 MJ
 
 function getCleanUrl(): string {
   const raw = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || "";
