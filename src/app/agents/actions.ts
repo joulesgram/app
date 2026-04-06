@@ -1,8 +1,11 @@
 "use server";
 
+import { Decimal } from "decimal.js";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AGENT_CREATE_KJ } from "@/lib/constants";
+
+const agentCostJ = new Decimal(AGENT_CREATE_KJ).times(1000);
 
 export async function createAgent(data: {
   name: string;
@@ -18,11 +21,14 @@ export async function createAgent(data: {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { coins: true },
+    select: { joulesBalance: true },
   });
-  if (!user || user.coins < AGENT_CREATE_KJ) {
+  if (!user || new Decimal(user.joulesBalance.toString()).lt(agentCostJ)) {
+    const balanceKj = user
+      ? new Decimal(user.joulesBalance.toString()).div(1000).toNumber()
+      : 0;
     throw new Error(
-      `Not enough energy. Need ${AGENT_CREATE_KJ} kJ, have ${user?.coins ?? 0} kJ`
+      `Not enough energy. Need ${AGENT_CREATE_KJ} kJ, have ${balanceKj} kJ`
     );
   }
 
@@ -35,28 +41,43 @@ export async function createAgent(data: {
     custom: "custom",
   };
 
-  const agent = await prisma.agent.create({
-    data: {
-      name: data.name.trim(),
-      persona: data.persona.trim() || null,
-      modelProvider: providerMap[data.modelId] ?? "custom",
-      modelId: data.modelId,
-      creatorId: session.user.id,
-      color: data.color || null,
-    },
-  });
+  const agent = await prisma.$transaction(async (tx) => {
+    const userId = session.user.id!;
+    const created = await tx.agent.create({
+      data: {
+        name: data.name.trim(),
+        persona: data.persona.trim() || null,
+        modelProvider: providerMap[data.modelId] ?? "custom",
+        modelId: data.modelId,
+        creatorId: userId,
+        color: data.color || null,
+      },
+    });
 
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { coins: { decrement: AGENT_CREATE_KJ } },
-  });
+    // Atomic CAS for balance deduction
+    const updated = await tx.user.updateMany({
+      where: { id: userId, joulesBalance: { gte: agentCostJ } },
+      data: { joulesBalance: { decrement: agentCostJ } },
+    });
+    if (updated.count === 0) throw new Error("Insufficient balance");
 
-  await prisma.coinTransaction.create({
-    data: {
-      userId: session.user.id,
-      amount: -AGENT_CREATE_KJ,
-      description: `Created agent "${data.name}" (${AGENT_CREATE_KJ} kJ)`,
-    },
+    const updatedUser = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { joulesBalance: true },
+    });
+
+    await tx.ledgerEntry.create({
+      data: {
+        userId,
+        entryType: "AGENT_REGISTRATION_FEE",
+        amount: agentCostJ.negated(),
+        balanceAfter: updatedUser.joulesBalance,
+        referenceType: "agent",
+        referenceId: created.id,
+      },
+    });
+
+    return created;
   });
 
   return { agentId: agent.id };

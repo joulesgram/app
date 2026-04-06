@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import NextAuth, { type DefaultSession } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { cookies } from "next/headers";
+import { Decimal } from "decimal.js";
 import { prisma } from "@/lib/prisma";
 import { getSignupReward, chainReward } from "@/lib/joules";
+import { TREASURY_USER_ID } from "@/lib/integrity";
+import { grantDailyLoginBonus, isPreScaleModeEnabled } from "@/lib/pre-scale";
 import type { User as PrismaUser } from "@/generated/prisma/client";
 
 declare module "next-auth" {
@@ -11,7 +14,7 @@ declare module "next-auth" {
     user: {
       username: string;
       userNumber: number;
-      coins: number;
+      joulesBalance: number; // number for session serialization; source of truth is Decimal in DB
     } & DefaultSession["user"];
   }
 }
@@ -27,10 +30,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ user, profile }) {
       if (!user.email) return false;
+      const userEmail = user.email;
 
       try {
         const existing = await prisma.user.findUnique({
-          where: { email: user.email },
+          where: { email: userEmail },
         });
 
         if (!existing) {
@@ -63,23 +67,57 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           const referredBy = inviter?.referralCode ?? null;
 
-          const newUser = await prisma.user.create({
-            data: {
-              email: user.email,
-              username,
-              userNumber,
-              referralCode,
-              referredBy,
-              coins: reward,
-            },
-          });
+          // Reward is in kJ from getSignupReward; convert to joules for storage
+          const rewardJ = new Decimal(reward).times(1000);
 
-          await prisma.coinTransaction.create({
-            data: {
-              userId: newUser.id,
-              amount: reward,
-              description: `Signup reward (${reward} kJ)`,
-            },
+          const newUser = await prisma.$transaction(async (tx) => {
+            const created = await tx.user.create({
+              data: {
+                email: userEmail,
+                username,
+                userNumber,
+                referralCode,
+                referredBy,
+                joulesBalance: rewardJ,
+              },
+            });
+
+            // Debit treasury, credit new user
+            await tx.user.update({
+              where: { id: TREASURY_USER_ID },
+              data: { joulesBalance: { decrement: rewardJ } },
+            });
+
+            const treasury = await tx.user.findUniqueOrThrow({
+              where: { id: TREASURY_USER_ID },
+              select: { joulesBalance: true },
+            });
+
+            await tx.ledgerEntry.create({
+              data: {
+                userId: TREASURY_USER_ID,
+                entryType: "GENESIS_BONUS",
+                amount: rewardJ.negated(),
+                balanceAfter: treasury.joulesBalance,
+                referenceType: "user",
+                referenceId: created.id,
+                description: `Genesis bonus outflow for user #${userNumber}`,
+              },
+            });
+
+            await tx.ledgerEntry.create({
+              data: {
+                userId: created.id,
+                entryType: "GENESIS_BONUS",
+                amount: rewardJ,
+                balanceAfter: created.joulesBalance,
+                referenceType: "user",
+                referenceId: created.id,
+                description: `Signup reward (${reward} kJ)`,
+              },
+            });
+
+            return created;
           });
 
           // Walk the referral ancestor chain
@@ -106,7 +144,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.userId = dbUser.id;
             token.username = dbUser.username;
             token.userNumber = dbUser.userNumber;
-            token.coins = dbUser.coins;
+            token.joulesBalance = new Decimal(dbUser.joulesBalance.toString()).toNumber();
           }
         } catch (e) {
           console.error("Auth jwt DB error:", e);
@@ -121,15 +159,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.username = token.username as string;
         session.user.userNumber = token.userNumber as number;
 
-        // Always fetch fresh coin balance from DB (not the stale JWT value)
+        // Grant daily login bonus if Pre-Scale Mode is active
+        try {
+          const preScaleActive = await isPreScaleModeEnabled(prisma);
+          if (preScaleActive) {
+            await grantDailyLoginBonus(prisma, token.userId as string);
+          }
+        } catch (e) {
+          console.error("Daily login bonus error:", e);
+        }
+
+        // Always fetch fresh balance from DB (not the stale JWT value)
         try {
           const freshUser = await prisma.user.findUnique({
             where: { id: token.userId as string },
-            select: { coins: true },
+            select: { joulesBalance: true },
           });
-          session.user.coins = freshUser?.coins ?? (token.coins as number);
+          session.user.joulesBalance = freshUser
+            ? new Decimal(freshUser.joulesBalance.toString()).toNumber()
+            : (token.joulesBalance as number);
         } catch {
-          session.user.coins = token.coins as number;
+          session.user.joulesBalance = token.joulesBalance as number;
         }
       }
       return session;
@@ -172,20 +222,52 @@ async function processReferralChain(
     if (!ancestor || ancestor.id === newUserId) break;
 
     if (ancestor.active) {
-      const reward = chainReward(level);
-      if (reward <= 0) break;
+      const rewardKj = chainReward(level);
+      if (rewardKj <= 0) break;
+      const rewardJ = new Decimal(rewardKj).times(1000);
 
-      await prisma.user.update({
-        where: { id: ancestor.id },
-        data: { coins: { increment: reward } },
-      });
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: ancestor!.id },
+          data: { joulesBalance: { increment: rewardJ } },
+        });
+        const updatedAncestor = await tx.user.findUniqueOrThrow({
+          where: { id: ancestor!.id },
+          select: { joulesBalance: true },
+        });
 
-      await prisma.coinTransaction.create({
-        data: {
-          userId: ancestor.id,
-          amount: reward,
-          description: `Referral chain reward (level ${level}, ${reward} kJ)`,
-        },
+        await tx.user.update({
+          where: { id: TREASURY_USER_ID },
+          data: { joulesBalance: { decrement: rewardJ } },
+        });
+        const updatedTreasury = await tx.user.findUniqueOrThrow({
+          where: { id: TREASURY_USER_ID },
+          select: { joulesBalance: true },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            userId: TREASURY_USER_ID,
+            entryType: "REFERRAL_BONUS",
+            amount: rewardJ.negated(),
+            balanceAfter: updatedTreasury.joulesBalance,
+            referenceType: "user",
+            referenceId: newUserId,
+            description: `Referral outflow (level ${level})`,
+          },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            userId: ancestor!.id,
+            entryType: "REFERRAL_BONUS",
+            amount: rewardJ,
+            balanceAfter: updatedAncestor.joulesBalance,
+            referenceType: "user",
+            referenceId: newUserId,
+            description: `Referral chain reward (level ${level}, ${rewardKj} kJ)`,
+          },
+        });
       });
     }
 

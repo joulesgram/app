@@ -1,4 +1,4 @@
-// --- Energy costs (kilojoules) ---
+// --- Energy costs (in kJ for display/config — converted to joules at write boundaries) ---
 export const GENESIS_KJ = 25_000;
 export const PHOTO_SCORE_KJ = 75;
 export const AGENT_CREATE_KJ = 50;

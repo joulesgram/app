@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { TREASURY_USER_ID } from "@/lib/integrity";
 
 export type LeaderboardEntry = {
   id: string;
   username: string;
   userNumber: number;
-  coins: number;
+  joulesBalance: number; // in joules (J), convert to kJ at UI layer
   createdAt: Date;
   rank: number;
 };
@@ -14,17 +15,18 @@ type LeaderboardRow = {
   id: string;
   username: string;
   userNumber: number;
-  coins: number;
+  joulesBalance: number;
   createdAt: Date;
   rank: bigint | number;
 };
 
 /**
  * Fetch leaderboard rows ordered by:
- *   1) coins DESC
+ *   1) joulesBalance DESC
  *   2) userNumber ASC
  *   3) createdAt ASC
  *
+ * Excludes the treasury system user.
  * Returns top `limit` plus the current user row (if present) in one query.
  */
 export async function getLeaderboard(
@@ -37,18 +39,19 @@ export async function getLeaderboard(
         u.id,
         u.username,
         u."userNumber",
-        u.coins,
+        u."joulesBalance",
         u."createdAt",
         ROW_NUMBER() OVER (
-          ORDER BY u.coins DESC, u."userNumber" ASC, u."createdAt" ASC
+          ORDER BY u."joulesBalance" DESC, u."userNumber" ASC, u."createdAt" ASC
         ) AS rank
       FROM "User" u
+      WHERE u.id != ${TREASURY_USER_ID}
     )
     SELECT
       id,
       username,
       "userNumber",
-      coins,
+      "joulesBalance",
       "createdAt",
       rank
     FROM ranked_users
@@ -61,7 +64,7 @@ export async function getLeaderboard(
     id: row.id,
     username: row.username,
     userNumber: row.userNumber,
-    coins: row.coins,
+    joulesBalance: Number(row.joulesBalance),
     createdAt: row.createdAt,
     rank: Number(row.rank),
   }));

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { Decimal } from "decimal.js";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { TREASURY_USER_ID } from "@/lib/integrity";
 import {
   PHOTO_SCORE_KJ,
   PUBLISH_THRESHOLD,
@@ -45,6 +47,7 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+    const userId = session.user.id;
 
     const body = await req.json();
     const { photoId } = body as { photoId: string };
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
     if (!photo) {
       return NextResponse.json({ error: "Photo not found" }, { status: 404 });
     }
-    if (photo.userId !== session.user.id) {
+    if (photo.userId !== userId) {
       return NextResponse.json({ error: "Not your photo" }, { status: 403 });
     }
     if (photo.aiScore !== null) {
@@ -275,33 +278,77 @@ Respond ONLY with valid JSON matching this exact schema:
 
     console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
 
-    // Deduct scoring cost from user
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { decrement: PHOTO_SCORE_KJ } },
-    });
+    // Deduct scoring cost and credit upload reward atomically
+    const scoreCostJ = new Decimal(PHOTO_SCORE_KJ).times(1000);
+    const uploadRewardJ = new Decimal(5).times(1000); // 5 kJ
 
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: -PHOTO_SCORE_KJ,
-        description: `Photo AI scoring (${PHOTO_SCORE_KJ} kJ)`,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      // 1. Deduct scoring cost (atomic CAS)
+      const updated = await tx.user.updateMany({
+        where: { id: userId, joulesBalance: { gte: scoreCostJ } },
+        data: { joulesBalance: { decrement: scoreCostJ } },
+      });
+      if (updated.count === 0) throw new Error("Insufficient balance for scoring");
 
-    // Credit 5 kJ for uploading
-    const uploadReward = 5;
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { increment: uploadReward } },
-    });
+      // 2. Read updated balance
+      const afterDebit = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { joulesBalance: true },
+      });
 
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: uploadReward,
-        description: "Upload reward (5 kJ)",
-      },
+      await tx.ledgerEntry.create({
+        data: {
+          userId: userId,
+          entryType: "COMPUTE_FEE",
+          amount: scoreCostJ.negated(),
+          balanceAfter: afterDebit.joulesBalance,
+          referenceType: "photo",
+          referenceId: photoId,
+        },
+      });
+
+      // 3. Credit upload reward
+      await tx.user.update({
+        where: { id: userId },
+        data: { joulesBalance: { increment: uploadRewardJ } },
+      });
+
+      const afterCredit = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { joulesBalance: true },
+      });
+
+      // Treasury debit for upload reward
+      await tx.user.update({
+        where: { id: TREASURY_USER_ID },
+        data: { joulesBalance: { decrement: uploadRewardJ } },
+      });
+      const treasuryAfter = await tx.user.findUniqueOrThrow({
+        where: { id: TREASURY_USER_ID },
+        select: { joulesBalance: true },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          userId: TREASURY_USER_ID,
+          entryType: "UPLOAD_REWARD",
+          amount: uploadRewardJ.negated(),
+          balanceAfter: treasuryAfter.joulesBalance,
+          referenceType: "photo",
+          referenceId: photoId,
+        },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          userId: userId,
+          entryType: "UPLOAD_REWARD",
+          amount: uploadRewardJ,
+          balanceAfter: afterCredit.joulesBalance,
+          referenceType: "photo",
+          referenceId: photoId,
+        },
+      });
     });
 
     return NextResponse.json({
