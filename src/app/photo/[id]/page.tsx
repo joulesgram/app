@@ -38,7 +38,7 @@ export default async function PhotoPage({
         photoId_userId: { photoId: id, userId: session.user.id },
       },
     });
-    existingRating = rating?.score ?? null;
+    existingRating = rating ? Number(rating.score) : null;
   }
 
   // Compute human average
@@ -46,7 +46,7 @@ export default async function PhotoPage({
     where: { photoId: id },
     _avg: { score: true },
   });
-  humanAvg = agg._avg.score ?? null;
+  humanAvg = agg._avg.score != null ? Number(agg._avg.score) : null;
 
   const isOwner = session?.user?.id === photo.userId;
   const nextPhoto = session?.user?.id
@@ -71,11 +71,11 @@ export default async function PhotoPage({
         photoId={photo.id}
         imageUrl={photo.imageUrl}
         username={photo.user.username}
-        aiScore={photo.aiScore}
+        aiScore={photo.aiScore != null ? Number(photo.aiScore) : null}
         critique={photo.critique}
         humanAvg={humanAvg}
         agentRatings={photo.agentRatings.map((ar) => ({
-          score: ar.score,
+          score: Number(ar.score),
           critique: ar.critique,
           agent: ar.agent,
         }))}

@@ -27,7 +27,7 @@ export default async function InvitePage() {
 
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { referralCode: true, username: true, coins: true },
+    select: { referralCode: true, username: true, joulesBalance: true },
   });
 
   const origin = deriveOrigin(headers());
@@ -40,7 +40,7 @@ export default async function InvitePage() {
           <div className="text-right">
             <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
             <p className="text-sm font-mono text-blue">
-              {(currentUser?.coins ?? session.user.coins ?? 0).toLocaleString()} kJ
+              {(currentUser ? Number(currentUser.joulesBalance) : session.user.joulesBalance ?? 0).toLocaleString()} kJ
             </p>
           </div>
         </div>
