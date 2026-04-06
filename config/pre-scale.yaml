@@ -1,0 +1,38 @@
+# Joulegram Pre-Scale Mode configuration.
+#
+# All joule amounts are stored as integer joules. 1 kJ = 1000 J.
+# This file is loaded at module init by src/lib/pre-scale-config.ts
+# (Node runtime only — do not import from edge routes).
+#
+# Spec: PRE_SCALE_MODE_SPEC.md §2
+
+pre_scale_mode:
+  enabled: true
+  graduation_threshold_active_users: 100
+  graduation_window_days: 7   # must sustain threshold for N consecutive days
+
+  # 10 MJ bootstrap pool — funds all Pre-Scale rewards.
+  bootstrap_pool_j: 10000000000
+  bootstrap_receipt_id: "genesis_bootstrap_001"
+  bootstrap_pool_id: "pre_scale_v1"
+
+  passive_regen:
+    rate_j_per_hour: 10000          # 10 kJ/hr
+    cap_j: 150000                   # 150 kJ
+    only_when_balance_below_cap: true   # Day 5 debt: no code consumer yet
+
+  daily_login_bonus_j: 50000        # 50 kJ
+
+  rate_to_earn:
+    reward_j_per_rating: 5000       # 5 kJ
+    daily_cap_ratings_per_user: 20
+
+  rate_to_post_unlock:
+    enabled: true
+    ratings_required: 5
+    counter_resets_on_post: true
+
+  spark_tier_ui:
+    hide_kj_balance: true
+    show_battery_icon: true
+    show_posts_remaining_text: true
