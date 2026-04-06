@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isPreScaleModeEnabled, runPassiveRegen } from "@/lib/pre-scale";
+import { assertCronEnv } from "@/lib/env-check";
+
+// Fail cold-start if CRON_SECRET is missing, rather than silently
+// 401-ing every scheduled Vercel cron invocation.
+assertCronEnv();
 
 /**
  * Vercel Cron endpoint for hourly passive regen.
