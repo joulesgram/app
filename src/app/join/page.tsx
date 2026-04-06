@@ -17,13 +17,13 @@ export default async function JoinPage() {
   const [totalUsers, totalPhotos, distributedAggregate] = await Promise.all([
     prisma.user.count(),
     prisma.photo.count(),
-    prisma.coinTransaction.aggregate({
+    prisma.ledgerEntry.aggregate({
       _sum: { amount: true },
       where: { amount: { gt: 0 } },
     }),
   ]);
 
-  const totalJoulesDistributed = distributedAggregate._sum.amount ?? 0;
+  const totalJoulesDistributed = Number(distributedAggregate._sum.amount ?? 0);
 
   return (
     <main className="min-h-screen bg-[#050810] text-white px-4 py-16">

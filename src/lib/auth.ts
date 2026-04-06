@@ -11,7 +11,7 @@ declare module "next-auth" {
     user: {
       username: string;
       userNumber: number;
-      coins: number;
+      joulesBalance: number;
     } & DefaultSession["user"];
   }
 }
@@ -70,14 +70,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               userNumber,
               referralCode,
               referredBy,
-              coins: reward,
+              joulesBalance: reward,
+              cumulativeJoulesEarned: reward,
             },
           });
 
-          await prisma.coinTransaction.create({
+          await prisma.ledgerEntry.create({
             data: {
               userId: newUser.id,
+              entryType: "GENESIS_BONUS",
               amount: reward,
+              balanceAfter: reward,
+              referenceType: "signup",
+              referenceId: newUser.id,
               description: `Signup reward (${reward} kJ)`,
             },
           });
@@ -106,7 +111,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.userId = dbUser.id;
             token.username = dbUser.username;
             token.userNumber = dbUser.userNumber;
-            token.coins = dbUser.coins;
+            token.joulesBalance = Number(dbUser.joulesBalance);
           }
         } catch (e) {
           console.error("Auth jwt DB error:", e);
@@ -121,15 +126,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.username = token.username as string;
         session.user.userNumber = token.userNumber as number;
 
-        // Always fetch fresh coin balance from DB (not the stale JWT value)
+        // Always fetch fresh balance from DB (not the stale JWT value)
         try {
           const freshUser = await prisma.user.findUnique({
             where: { id: token.userId as string },
-            select: { coins: true },
+            select: { joulesBalance: true },
           });
-          session.user.coins = freshUser?.coins ?? (token.coins as number);
+          session.user.joulesBalance = freshUser ? Number(freshUser.joulesBalance) : (token.joulesBalance as number);
         } catch {
-          session.user.coins = token.coins as number;
+          session.user.joulesBalance = token.joulesBalance as number;
         }
       }
       return session;
@@ -175,15 +180,22 @@ async function processReferralChain(
       const reward = chainReward(level);
       if (reward <= 0) break;
 
-      await prisma.user.update({
+      const updated = await prisma.user.update({
         where: { id: ancestor.id },
-        data: { coins: { increment: reward } },
+        data: {
+          joulesBalance: { increment: reward },
+          cumulativeJoulesEarned: { increment: reward },
+        },
       });
 
-      await prisma.coinTransaction.create({
+      await prisma.ledgerEntry.create({
         data: {
           userId: ancestor.id,
+          entryType: "REFERRAL_BONUS",
           amount: reward,
+          balanceAfter: Number(updated.joulesBalance),
+          referenceType: "referral_chain",
+          referenceId: newUserId,
           description: `Referral chain reward (level ${level}, ${reward} kJ)`,
         },
       });

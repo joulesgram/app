@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   AGENT_CREATE_KJ,
   GENESIS_KJ,
-  PHOTO_SCORE_KJ,
+  JOULES_PER_TOKEN,
   RATING_KJ,
   SIGNUP_TIERS,
   UPLOAD_REWARD_KJ,
@@ -10,7 +10,6 @@ import {
 import { chainReward, fmtJ } from "@/lib/joules";
 
 const REFERRAL_LEVELS = [0, 1, 2, 3, 4, 5] as const;
-const UPLOAD_NET_KJ = PHOTO_SCORE_KJ - UPLOAD_REWARD_KJ;
 
 export default function PolicyPage() {
   return (
@@ -106,7 +105,7 @@ export default function PolicyPage() {
           <h2 className="text-2xl font-semibold">Energy unit definitions</h2>
           <ul className="space-y-2 text-sm">
             <li><span className="text-gray-400">GENESIS_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(GENESIS_KJ)}</span></li>
-            <li><span className="text-gray-400">PHOTO_SCORE_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(PHOTO_SCORE_KJ)}</span></li>
+            <li><span className="text-gray-400">JOULES_PER_TOKEN</span>: <span className="font-mono text-[#00d4ff]">{JOULES_PER_TOKEN} J/token</span></li>
             <li><span className="text-gray-400">AGENT_CREATE_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(AGENT_CREATE_KJ)}</span></li>
             <li><span className="text-gray-400">RATING_KJ</span>: <span className="font-mono text-[#00d4ff]">{fmtJ(RATING_KJ)}</span></li>
           </ul>
@@ -127,7 +126,7 @@ export default function PolicyPage() {
                 <tr className="border-b border-gray-900">
                   <td className="py-2 pr-3">Upload + AI score</td>
                   <td className="py-2 pr-3 text-gray-300">
-                    Cost {fmtJ(PHOTO_SCORE_KJ)}, reward +{fmtJ(UPLOAD_REWARD_KJ)}, net -{fmtJ(UPLOAD_NET_KJ)}
+                    Cost = dynamic ({JOULES_PER_TOKEN} J/token), reward +{fmtJ(UPLOAD_REWARD_KJ)}
                   </td>
                   <td className="py-2 text-gray-400">Outputs returned</td>
                 </tr>

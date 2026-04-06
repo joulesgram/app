@@ -7,33 +7,92 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  email        String   @unique
-  coins        Float    @default(0)
-  userNumber   Int      @unique
-  referralCode String   @unique @default(cuid())
-  referredBy   String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
-  photos           Photo[]
-  agents           Agent[]
-  humanRatings     HumanRating[]
-  coinTransactions CoinTransaction[]
+enum Tier {
+  SPARK
+  GLOW
+  FLAME
+  BEACON
+  STAR
+}
+
+enum AgentType {
+  STARTER
+  USER
+}
+
+enum ScoreStatus {
+  PENDING
+  SCORING
+  SCORED
+  FAILED
+}
+
+enum HumanRatingStatus {
+  PENDING
+  RESOLVED
+}
+
+enum LedgerEntryType {
+  GENESIS_BONUS
+  UPLOAD_REWARD
+  RATING_REWARD
+  RATING_STAKE
+  STAKE_RETURN
+  AGENT_INCOME
+  REFERRAL_BONUS
+  COMPUTE_FEE
+  AGENT_REGISTRATION_FEE
+  MINT
+  BURN
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id                     String   @id @default(cuid())
+  username               String   @unique
+  email                  String   @unique
+  userNumber             Int      @unique
+  joulesBalance          Decimal  @default(0) @db.Decimal(18, 4)
+  cumulativeJoulesEarned Decimal  @default(0) @db.Decimal(18, 4)
+  currentTier            Tier     @default(SPARK)
+  referralCode           String   @unique @default(cuid())
+  referredBy             String?
+  active                 Boolean  @default(true)
+  isGenesisMiner         Boolean  @default(false)
+  createdAt              DateTime @default(now())
+
+  photos       Photo[]
+  agents       Agent[]
+  humanRatings HumanRating[]
+  ledgerEntries LedgerEntry[]
+
+  referrer  User?  @relation("UserReferrals", fields: [referredBy], references: [id])
+  referrals User[] @relation("UserReferrals")
 }
 
 model Photo {
-  id        String   @id @default(cuid())
-  imageUrl  String
-  userId    String
-  category  String?
-  aiScore   Float?
-  critique  String?
-  computeKJ Float    @default(0)
-  nsfw      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                    String      @id @default(cuid())
+  imageUrl              String
+  userId                String
+  category              String?
+  aiScore               Decimal?    @db.Decimal(6, 2)
+  critique              String?
+  computeKj             Decimal     @default(0) @db.Decimal(18, 4)
+  scoreStatus           ScoreStatus @default(PENDING)
+  ratingWindowClosesAt  DateTime?
+  humanConsensusScore   Decimal?    @db.Decimal(6, 2)
+  humanConsensusN       Int?
+  humanResolvedAt       DateTime?
+  publicFeedEligible    Boolean     @default(true)
+  nsfw                  Boolean     @default(false)
+  createdAt             DateTime    @default(now())
 
   user         User          @relation(fields: [userId], references: [id])
   humanRatings HumanRating[]
@@ -41,26 +100,36 @@ model Photo {
 }
 
 model Agent {
-  id            String   @id @default(cuid())
-  name          String
-  persona       String?
-  modelProvider String
-  modelId       String
-  creatorId     String
-  color         String?
-  verified      Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  id                String    @id @default(cuid())
+  name              String
+  persona           String?
+  modelProvider     String
+  modelId           String
+  creatorId         String
+  color             String?
+  agentType         AgentType @default(USER)
+  active            Boolean   @default(true)
+  systemPromptHash  String?
+  registrationFeeKj Decimal   @default(0) @db.Decimal(18, 4)
+  verified          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
 
   creator      User          @relation(fields: [creatorId], references: [id])
   agentRatings AgentRating[]
 }
 
 model HumanRating {
-  id        String   @id @default(cuid())
-  photoId   String
-  userId    String
-  score     Float
-  createdAt DateTime @default(now())
+  id               String            @id @default(cuid())
+  photoId          String
+  userId           String
+  score            Decimal           @db.Decimal(6, 2)
+  stakeAmount      Decimal           @default(0) @db.Decimal(18, 4)
+  status           HumanRatingStatus @default(PENDING)
+  resolvedAt       DateTime?
+  accuracyBand     String?
+  rewardAmount     Decimal?          @db.Decimal(18, 4)
+  timingMultiplier Decimal           @default(1.0) @db.Decimal(6, 4)
+  createdAt        DateTime          @default(now())
 
   photo Photo @relation(fields: [photoId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
@@ -69,24 +138,59 @@ model HumanRating {
 }
 
 model AgentRating {
-  id             String   @id @default(cuid())
-  photoId        String
-  agentId        String
-  score          Float
-  critique       String?
-  computeJoules  Float    @default(0)
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  photoId          String
+  agentId          String
+  score            Decimal  @db.Decimal(6, 2)
+  critique         String?
+  computeJoules    Decimal  @default(0) @db.Decimal(18, 4)
+  inConsensusBand  Boolean?
+  computeReceiptId String?
+  createdAt        DateTime @default(now())
 
-  photo Photo @relation(fields: [photoId], references: [id])
-  agent Agent @relation(fields: [agentId], references: [id])
+  photo          Photo           @relation(fields: [photoId], references: [id])
+  agent          Agent           @relation(fields: [agentId], references: [id])
+  computeReceipt ComputeReceipt? @relation(fields: [computeReceiptId], references: [id])
+
+  @@unique([photoId, agentId])
 }
 
-model CoinTransaction {
-  id          String   @id @default(cuid())
-  userId      String
-  amount      Float
-  description String?
-  createdAt   DateTime @default(now())
+model LedgerEntry {
+  id            String          @id @default(cuid())
+  userId        String
+  entryType     LedgerEntryType
+  amount        Decimal         @db.Decimal(18, 4)
+  balanceAfter  Decimal         @db.Decimal(18, 4)
+  referenceType String?
+  referenceId   String?
+  description   String?
+  createdAt     DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model ComputeReceipt {
+  id            String   @id @default(cuid())
+  modelProvider String
+  modelId       String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  computeKj     Decimal  @default(0) @db.Decimal(18, 4)
+  createdAt     DateTime @default(now())
+
+  agentRatings AgentRating[]
+}
+
+model DailySettlement {
+  id               String   @id @default(cuid())
+  settlementDate   DateTime @unique @db.Date
+  totalMinted      Decimal  @default(0) @db.Decimal(18, 4)
+  totalBurned      Decimal  @default(0) @db.Decimal(18, 4)
+  totalCompute     Decimal  @default(0) @db.Decimal(18, 4)
+  photosScored     Int      @default(0)
+  ratingsResolved  Int      @default(0)
+  activeUsers      Int      @default(0)
+  createdAt        DateTime @default(now())
 }

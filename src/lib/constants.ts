@@ -1,9 +1,11 @@
 // --- Energy costs (kilojoules) ---
 export const GENESIS_KJ = 25_000;
-export const PHOTO_SCORE_KJ = 75;
 export const AGENT_CREATE_KJ = 50;
 export const RATING_KJ = 0.1;
 export const UPLOAD_REWARD_KJ = 5;
+
+// --- Compute pricing ---
+export const JOULES_PER_TOKEN = 25;
 
 // --- Rating ---
 export const RATING_SCALE = { min: 1.0, max: 5.0 } as const;

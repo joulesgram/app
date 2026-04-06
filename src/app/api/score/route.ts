@@ -2,23 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import {
-  PHOTO_SCORE_KJ,
   PUBLISH_THRESHOLD,
   RATING_SCALE,
   VALID_CATEGORIES,
+  UPLOAD_REWARD_KJ,
+  JOULES_PER_TOKEN,
 } from "@/lib/constants";
+
+const { Decimal } = Prisma;
 
 const anthropic = new Anthropic();
 
-// Joules per input/output token for Claude Sonnet (approximate energy cost)
-const JOULES_PER_INPUT_TOKEN = 0.003;
-const JOULES_PER_OUTPUT_TOKEN = 0.015;
+const MODEL_ID = "claude-sonnet-4-20250514";
 
 interface AgentScore {
   agentId: string;
   agentName: string;
-  score: number;
+  score: Prisma.Decimal;
   critique: string;
 }
 
@@ -34,7 +36,18 @@ interface ScoreResponse {
   nsfw: boolean;
 }
 
+function clampScore(raw: number): Prisma.Decimal {
+  const clamped = Math.max(
+    RATING_SCALE.min,
+    Math.min(RATING_SCALE.max, Math.round(raw * 10) / 10)
+  );
+  return new Decimal(clamped);
+}
+
 export async function POST(req: NextRequest) {
+  let photoId: string | undefined;
+  let scoringClaimed = false;
+
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       console.error("ANTHROPIC_API_KEY not set");
@@ -47,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { photoId } = body as { photoId: string };
+    photoId = (body as { photoId: string }).photoId;
 
     if (!photoId) {
       return NextResponse.json({ error: "photoId required" }, { status: 400 });
@@ -61,13 +74,22 @@ export async function POST(req: NextRequest) {
     if (photo.userId !== session.user.id) {
       return NextResponse.json({ error: "Not your photo" }, { status: 403 });
     }
-    if (photo.aiScore !== null) {
-      return NextResponse.json({ error: "Already scored" }, { status: 409 });
+
+    // -----------------------------------------------------------------------
+    // Atomic CAS: PENDING → SCORING (idempotency guard)
+    // -----------------------------------------------------------------------
+    const cas = await prisma.photo.updateMany({
+      where: { id: photoId, scoreStatus: "PENDING" },
+      data: { scoreStatus: "SCORING" },
+    });
+    if (cas.count === 0) {
+      return NextResponse.json({ error: "Already scored or in progress" }, { status: 409 });
     }
+    scoringClaimed = true;
 
     // Fetch all active agents
     const agents = await prisma.agent.findMany({
-      where: { creator: { active: true } },
+      where: { active: true },
       select: { id: true, name: true, persona: true },
     });
 
@@ -139,8 +161,11 @@ Respond ONLY with valid JSON matching this exact schema:
 
     console.log(`[Score] Calling Anthropic API for photo ${photoId}, agents: ${agents.length}, image type: ${photo.imageUrl.startsWith("data:") ? "base64" : "url"}`);
 
+    // -----------------------------------------------------------------------
+    // Anthropic API call — OUTSIDE the transaction
+    // -----------------------------------------------------------------------
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: MODEL_ID,
       max_tokens: 1024,
       messages: [
         {
@@ -154,11 +179,19 @@ Respond ONLY with valid JSON matching this exact schema:
       system: systemPrompt,
     });
 
-    console.log(`[Score] Anthropic response received. Tokens: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`);
+    const inputTokens = response.usage.input_tokens;
+    const outputTokens = response.usage.output_tokens;
+
+    console.log(`[Score] Anthropic response received. Tokens: ${inputTokens} in, ${outputTokens} out`);
 
     // Extract text from response
     const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
+      // FAILED path — no usable response
+      await prisma.photo.update({
+        where: { id: photoId },
+        data: { scoreStatus: "FAILED" },
+      });
       return NextResponse.json(
         { error: "No text response from AI" },
         { status: 502 }
@@ -174,8 +207,12 @@ Respond ONLY with valid JSON matching this exact schema:
     let parsed: ScoreResponse;
     try {
       parsed = JSON.parse(jsonStr);
-    } catch (parseErr) {
+    } catch {
       console.error("Failed to parse AI response:", jsonStr);
+      await prisma.photo.update({
+        where: { id: photoId },
+        data: { scoreStatus: "FAILED" },
+      });
       return NextResponse.json(
         { error: "Failed to parse AI response" },
         { status: 502 }
@@ -184,15 +221,15 @@ Respond ONLY with valid JSON matching this exact schema:
 
     console.log(`[Score] Parsed response: aiScore=${parsed.score ?? "N/A"}, category=${parsed.category}, agents=${parsed.agent_scores?.length ?? 0}, nsfw=${parsed.nsfw}`);
 
-    // Compute energy cost in joules
-    const inputTokens = response.usage.input_tokens;
-    const outputTokens = response.usage.output_tokens;
-    const computeJoules =
-      inputTokens * JOULES_PER_INPUT_TOKEN +
-      outputTokens * JOULES_PER_OUTPUT_TOKEN;
-    const computeKJ = computeJoules / 1000;
+    // -----------------------------------------------------------------------
+    // Compute energy cost: (inputTokens + outputTokens) * JOULES_PER_TOKEN
+    // Result is in joules; divide by 1000 for kJ.
+    // -----------------------------------------------------------------------
+    const totalTokens = inputTokens + outputTokens;
+    const computeJoules = new Decimal(totalTokens).mul(JOULES_PER_TOKEN);
+    const computeKj = computeJoules.div(1000);
 
-    // Match agent scores to DB agents and save
+    // Match agent scores to DB agents
     const agentScores: AgentScore[] = [];
     if (parsed.agent_scores && parsed.agent_scores.length > 0) {
       for (const as_ of parsed.agent_scores) {
@@ -202,53 +239,28 @@ Respond ONLY with valid JSON matching this exact schema:
         );
         if (!agent) continue;
 
-        const score = Math.max(
-          RATING_SCALE.min,
-          Math.min(RATING_SCALE.max, Math.round(as_.score * 10) / 10)
-        );
-
         agentScores.push({
           agentId: agent.id,
           agentName: agent.name,
-          score,
+          score: clampScore(as_.score),
           critique: as_.critique,
         });
       }
     }
 
     // Average AI score across agents, or use direct score if no agents
-    let aiScore: number | null;
+    let aiScore: Prisma.Decimal | null;
     if (agentScores.length > 0) {
-      aiScore = Math.round(
-        (agentScores.reduce((sum: number, a: AgentScore) => sum + a.score, 0) /
-          agentScores.length) *
-          10
-      ) / 10;
-    } else if (parsed.score != null) {
-      // No agents — use the direct score from AI
-      aiScore = Math.max(
-        RATING_SCALE.min,
-        Math.min(RATING_SCALE.max, Math.round(parsed.score * 10) / 10)
+      const sum = agentScores.reduce(
+        (s: Prisma.Decimal, a: AgentScore) => s.add(a.score),
+        new Decimal(0)
       );
+      const raw = sum.div(agentScores.length).toNumber();
+      aiScore = new Decimal(Math.round(raw * 10) / 10);
+    } else if (parsed.score != null) {
+      aiScore = clampScore(parsed.score);
     } else {
       aiScore = null;
-    }
-
-    // Per-agent compute share
-    const perAgentJoules =
-      agentScores.length > 0 ? computeJoules / agentScores.length : 0;
-
-    // Save agent ratings
-    for (const as_ of agentScores) {
-      await prisma.agentRating.create({
-        data: {
-          photoId,
-          agentId: as_.agentId,
-          score: as_.score,
-          critique: as_.critique,
-          computeJoules: perAgentJoules,
-        },
-      });
     }
 
     // Validate and store category
@@ -258,69 +270,148 @@ Respond ONLY with valid JSON matching this exact schema:
       ? parsed.category.toLowerCase()
       : null;
 
-    // Determine if published (meets threshold)
-    const published = aiScore !== null && aiScore >= PUBLISH_THRESHOLD;
+    // Determine publish eligibility
+    const published = aiScore !== null && aiScore.gte(PUBLISH_THRESHOLD);
 
-    // Update photo with AI score, critique, compute cost, NSFW flag, and category
-    await prisma.photo.update({
-      where: { id: photoId },
-      data: {
-        aiScore,
-        critique: parsed.overall_critique,
-        computeKJ,
-        nsfw: parsed.nsfw,
-        category: detectedCategory,
-      },
-    });
+    // Per-agent compute share
+    const perAgentJoules =
+      agentScores.length > 0
+        ? computeJoules.div(agentScores.length)
+        : new Decimal(0);
+
+    const uploadReward = new Decimal(UPLOAD_REWARD_KJ);
+    const ratingWindowClosesAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const publicFeedEligible = aiScore !== null && aiScore.gte(PUBLISH_THRESHOLD);
+    const userId = session.user.id;
+
+    // -----------------------------------------------------------------------
+    // Single transaction: all DB writes
+    // -----------------------------------------------------------------------
+    try {
+      await prisma.$transaction(async (tx) => {
+        // 1. Create ComputeReceipt
+        const receipt = await tx.computeReceipt.create({
+          data: {
+            modelProvider: "anthropic",
+            modelId: MODEL_ID,
+            inputTokens,
+            outputTokens,
+            computeKj,
+          },
+        });
+
+        // 2. Create AgentRatings linked to receipt
+        for (const as_ of agentScores) {
+          await tx.agentRating.create({
+            data: {
+              photoId: photoId!,
+              agentId: as_.agentId,
+              score: as_.score,
+              critique: as_.critique,
+              computeJoules: perAgentJoules,
+              computeReceiptId: receipt.id,
+            },
+          });
+        }
+
+        // 3. Update photo → SCORED
+        await tx.photo.update({
+          where: { id: photoId },
+          data: {
+            aiScore,
+            critique: parsed.overall_critique,
+            computeKj,
+            scoreStatus: "SCORED",
+            nsfw: parsed.nsfw,
+            category: detectedCategory,
+            ratingWindowClosesAt,
+            publicFeedEligible,
+          },
+        });
+
+        // 4. Deduct dynamic compute cost from user
+        const afterDeduct = await tx.user.update({
+          where: { id: userId },
+          data: { joulesBalance: { decrement: computeKj } },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            userId,
+            entryType: "COMPUTE_FEE",
+            amount: computeKj.neg(),
+            balanceAfter: afterDeduct.joulesBalance,
+            referenceType: "photo",
+            referenceId: photoId!,
+            description: `Photo AI scoring (${computeKj.toFixed(4)} kJ, ${totalTokens} tokens)`,
+          },
+        });
+
+        // 5. Credit upload reward
+        const afterReward = await tx.user.update({
+          where: { id: userId },
+          data: {
+            joulesBalance: { increment: uploadReward },
+            cumulativeJoulesEarned: { increment: uploadReward },
+          },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            userId,
+            entryType: "UPLOAD_REWARD",
+            amount: uploadReward,
+            balanceAfter: afterReward.joulesBalance,
+            referenceType: "photo",
+            referenceId: photoId!,
+            description: `Upload reward (${UPLOAD_REWARD_KJ} kJ)`,
+          },
+        });
+      });
+    } catch (txErr) {
+      // -----------------------------------------------------------------------
+      // FAILED path: transaction rolled back — mark photo as FAILED
+      // -----------------------------------------------------------------------
+      console.error("Score transaction failed:", txErr);
+      await prisma.photo.update({
+        where: { id: photoId },
+        data: { scoreStatus: "FAILED" },
+      });
+      return NextResponse.json({ error: "Scoring failed" }, { status: 500 });
+    }
 
     console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
 
-    // Deduct scoring cost from user
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { decrement: PHOTO_SCORE_KJ } },
-    });
-
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: -PHOTO_SCORE_KJ,
-        description: `Photo AI scoring (${PHOTO_SCORE_KJ} kJ)`,
-      },
-    });
-
-    // Credit 5 kJ for uploading
-    const uploadReward = 5;
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { coins: { increment: uploadReward } },
-    });
-
-    await prisma.coinTransaction.create({
-      data: {
-        userId: session.user.id,
-        amount: uploadReward,
-        description: "Upload reward (5 kJ)",
-      },
-    });
-
     return NextResponse.json({
       photoId,
-      aiScore,
+      aiScore: aiScore?.toNumber() ?? null,
       critique: parsed.overall_critique,
       nsfw: parsed.nsfw,
       published,
       agentScores: agentScores.map((a: AgentScore) => ({
         agentName: a.agentName,
-        score: a.score,
+        score: a.score.toNumber(),
         critique: a.critique,
       })),
-      computeKJ: Math.round(computeKJ * 1000) / 1000,
-      computeJoules: Math.round(computeJoules * 100) / 100,
+      computeKj: computeKj.toNumber(),
+      computeJoules: computeJoules.toNumber(),
       tokens: { input: inputTokens, output: outputTokens },
     });
   } catch (e) {
     console.error("Score API error:", e);
+
+    // If we claimed SCORING but failed before the transaction, reset to FAILED
+    if (photoId && scoringClaimed) {
+      try {
+        await prisma.photo.update({
+          where: { id: photoId },
+          data: { scoreStatus: "FAILED" },
+        });
+      } catch {
+        console.error("Failed to mark photo as FAILED during error recovery");
+      }
+    }
+
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
