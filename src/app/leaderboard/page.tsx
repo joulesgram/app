@@ -64,7 +64,7 @@ export default async function LeaderboardPage() {
                       </p>
                     </div>
                     <span className="text-gray-300">#{row.userNumber}</span>
-                    <span className="font-mono text-[#00d4ff]">{row.coins.toLocaleString("en-US")} kJ</span>
+                    <span className="font-mono text-[#00d4ff]">{row.joulesBalance.toLocaleString("en-US")} kJ</span>
                     <span className="text-xs">
                       <span className="inline-flex px-2 py-1 rounded-full border border-gray-700 text-gray-200">
                         {getTierLabel(row.userNumber)}

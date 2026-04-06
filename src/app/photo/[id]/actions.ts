@@ -22,21 +22,25 @@ export async function submitRating(photoId: string, score: number) {
   const roundedScore = Math.round(score * 10) / 10;
   const userId = session.user.id;
 
-  // Use a transaction so rating + coin deduction are atomic
+  // Use a transaction so rating + ledger deduction are atomic
   const rating = await prisma.$transaction(async (tx) => {
     const r = await tx.humanRating.create({
       data: { photoId, userId, score: roundedScore },
     });
 
-    await tx.user.update({
+    const user = await tx.user.update({
       where: { id: userId },
-      data: { coins: { decrement: RATING_KJ } },
+      data: { joulesBalance: { decrement: RATING_KJ } },
     });
 
-    await tx.coinTransaction.create({
+    await tx.ledgerEntry.create({
       data: {
         userId,
+        entryType: "RATING_STAKE",
         amount: -RATING_KJ,
+        balanceAfter: user.joulesBalance,
+        referenceType: "human_rating",
+        referenceId: r.id,
         description: `Rated photo (${RATING_KJ} kJ)`,
       },
     });
@@ -51,7 +55,7 @@ export async function submitRating(photoId: string, score: number) {
   });
 
   return {
-    userScore: rating.score,
-    humanAvg: agg._avg.score,
+    userScore: Number(rating.score),
+    humanAvg: agg._avg.score != null ? Number(agg._avg.score) : null,
   };
 }

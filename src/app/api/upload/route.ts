@@ -17,15 +17,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "imageUrl required" }, { status: 400 });
     }
 
-    // Check user has enough coins for scoring
+    // Check user has enough joules for scoring
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { coins: true },
+      select: { joulesBalance: true },
     });
 
-    if (!user || user.coins < PHOTO_SCORE_KJ) {
+    if (!user || Number(user.joulesBalance) < PHOTO_SCORE_KJ) {
       return NextResponse.json(
-        { error: `Not enough energy. Need ${PHOTO_SCORE_KJ} kJ, have ${user?.coins ?? 0} kJ` },
+        { error: `Not enough energy. Need ${PHOTO_SCORE_KJ} kJ, have ${user ? Number(user.joulesBalance) : 0} kJ` },
         { status: 400 }
       );
     }

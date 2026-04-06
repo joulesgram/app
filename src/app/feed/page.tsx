@@ -41,7 +41,7 @@ export default async function FeedPage() {
     id: p.id,
     imageUrl: p.imageUrl,
     username: p.user.username,
-    aiScore: p.aiScore,
+    aiScore: p.aiScore != null ? Number(p.aiScore) : null,
     isOwner: p.userId === userId,
     hasRated: p.humanRatings.length > 0,
   }));
@@ -53,7 +53,7 @@ export default async function FeedPage() {
         .findMany({ where: { photoId: p.id }, select: { score: true } })
         .then((rs) =>
           rs.length > 0
-            ? rs.reduce((s, r) => s + r.score, 0) / rs.length
+            ? rs.reduce((s, r) => s + Number(r.score), 0) / rs.length
             : null
         )
     )
@@ -76,7 +76,7 @@ export default async function FeedPage() {
             <div className="text-right">
               <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
               <p className="text-sm font-mono text-blue">
-                {(session.user.coins ?? 0).toLocaleString()} kJ
+                {(session.user.joulesBalance ?? 0).toLocaleString()} kJ
               </p>
             </div>
           </div>

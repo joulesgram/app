@@ -18,11 +18,11 @@ export async function createAgent(data: {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { coins: true },
+    select: { joulesBalance: true },
   });
-  if (!user || user.coins < AGENT_CREATE_KJ) {
+  if (!user || Number(user.joulesBalance) < AGENT_CREATE_KJ) {
     throw new Error(
-      `Not enough energy. Need ${AGENT_CREATE_KJ} kJ, have ${user?.coins ?? 0} kJ`
+      `Not enough energy. Need ${AGENT_CREATE_KJ} kJ, have ${user ? Number(user.joulesBalance) : 0} kJ`
     );
   }
 
@@ -46,15 +46,19 @@ export async function createAgent(data: {
     },
   });
 
-  await prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: session.user.id },
-    data: { coins: { decrement: AGENT_CREATE_KJ } },
+    data: { joulesBalance: { decrement: AGENT_CREATE_KJ } },
   });
 
-  await prisma.coinTransaction.create({
+  await prisma.ledgerEntry.create({
     data: {
       userId: session.user.id,
+      entryType: "AGENT_REGISTRATION_FEE",
       amount: -AGENT_CREATE_KJ,
+      balanceAfter: Number(updated.joulesBalance),
+      referenceType: "agent",
+      referenceId: agent.id,
       description: `Created agent "${data.name}" (${AGENT_CREATE_KJ} kJ)`,
     },
   });

@@ -267,7 +267,8 @@ Respond ONLY with valid JSON matching this exact schema:
       data: {
         aiScore,
         critique: parsed.overall_critique,
-        computeKJ,
+        computeKj: computeKJ,
+        scoreStatus: aiScore != null ? "SCORED" : "PENDING",
         nsfw: parsed.nsfw,
         category: detectedCategory,
       },
@@ -276,30 +277,41 @@ Respond ONLY with valid JSON matching this exact schema:
     console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
 
     // Deduct scoring cost from user
-    await prisma.user.update({
+    const afterDeduct = await prisma.user.update({
       where: { id: session.user.id },
-      data: { coins: { decrement: PHOTO_SCORE_KJ } },
+      data: { joulesBalance: { decrement: PHOTO_SCORE_KJ } },
     });
 
-    await prisma.coinTransaction.create({
+    await prisma.ledgerEntry.create({
       data: {
         userId: session.user.id,
+        entryType: "COMPUTE_FEE",
         amount: -PHOTO_SCORE_KJ,
+        balanceAfter: Number(afterDeduct.joulesBalance),
+        referenceType: "photo",
+        referenceId: photoId,
         description: `Photo AI scoring (${PHOTO_SCORE_KJ} kJ)`,
       },
     });
 
     // Credit 5 kJ for uploading
     const uploadReward = 5;
-    await prisma.user.update({
+    const afterReward = await prisma.user.update({
       where: { id: session.user.id },
-      data: { coins: { increment: uploadReward } },
+      data: {
+        joulesBalance: { increment: uploadReward },
+        cumulativeJoulesEarned: { increment: uploadReward },
+      },
     });
 
-    await prisma.coinTransaction.create({
+    await prisma.ledgerEntry.create({
       data: {
         userId: session.user.id,
+        entryType: "UPLOAD_REWARD",
         amount: uploadReward,
+        balanceAfter: Number(afterReward.joulesBalance),
+        referenceType: "photo",
+        referenceId: photoId,
         description: "Upload reward (5 kJ)",
       },
     });

@@ -22,7 +22,7 @@ export default async function AgentsPage() {
   // Fetch all agents with creators
   const agents = await prisma.agent.findMany({
     include: {
-      creator: { select: { username: true, coins: true } },
+      creator: { select: { username: true, joulesBalance: true } },
       agentRatings: { select: { score: true, photoId: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -44,7 +44,7 @@ export default async function AgentsPage() {
     const humanByPhoto: Record<string, number[]> = {};
     for (const r of humanRatings) {
       if (!humanByPhoto[r.photoId]) humanByPhoto[r.photoId] = [];
-      humanByPhoto[r.photoId].push(r.score);
+      humanByPhoto[r.photoId].push(Number(r.score));
     }
 
     for (const photoId of Object.keys(humanByPhoto)) {
@@ -67,7 +67,7 @@ export default async function AgentsPage() {
 
       const avgDiff =
         ratingsWithHuman.reduce(
-          (sum, r) => sum + Math.abs(r.score - humanAvgByPhoto.get(r.photoId)!),
+          (sum, r) => sum + Math.abs(Number(r.score) - humanAvgByPhoto.get(r.photoId)!),
           0
         ) / ratingsWithHuman.length;
 
@@ -89,7 +89,7 @@ export default async function AgentsPage() {
     .sort((a, b) => b.accuracy - a.accuracy)
     .slice(0, 20);
 
-  // --- Energy Rich (creator coins) ---
+  // --- Energy Rich (creator joulesBalance) ---
   const richAgents = agents
     .map((a) => ({
       id: a.id,
@@ -98,7 +98,7 @@ export default async function AgentsPage() {
       verified: a.verified,
       color: a.color,
       creatorName: a.creator.username,
-      creatorCoins: a.creator.coins,
+      creatorCoins: Number(a.creator.joulesBalance),
     }))
     .sort((a, b) => b.creatorCoins - a.creatorCoins)
     .slice(0, 20);
@@ -112,7 +112,7 @@ export default async function AgentsPage() {
       if (ratingsWithHuman.length === 0) return null;
 
       const avgAgentScore =
-        ratingsWithHuman.reduce((s, r) => s + r.score, 0) /
+        ratingsWithHuman.reduce((s, r) => s + Number(r.score), 0) /
         ratingsWithHuman.length;
 
       const avgHumanScore =
@@ -155,7 +155,7 @@ export default async function AgentsPage() {
                   @{session.user.username ?? "user"}
                 </p>
                 <p className="text-sm font-mono text-blue">
-                  {(session.user.coins ?? 0).toLocaleString()} kJ
+                  {(session.user.joulesBalance ?? 0).toLocaleString()} kJ
                 </p>
               </div>
             </div>

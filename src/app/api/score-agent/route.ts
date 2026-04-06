@@ -153,7 +153,7 @@ Respond ONLY with valid JSON: an array of objects, one per photo, in the same or
           _avg: { score: true },
         });
         if (agg._avg.score !== null) {
-          const newAiScore = Math.round(agg._avg.score * 10) / 10;
+          const newAiScore = Math.round(Number(agg._avg.score) * 10) / 10;
           const totalKJ = await prisma.agentRating.aggregate({
             where: { photoId: batch[j].id },
             _sum: { computeJoules: true },
@@ -162,7 +162,7 @@ Respond ONLY with valid JSON: an array of objects, one per photo, in the same or
             where: { id: batch[j].id },
             data: {
               aiScore: newAiScore,
-              computeKJ: (totalKJ._sum.computeJoules ?? 0) / 1000,
+              computeKj: Number(totalKJ._sum.computeJoules ?? 0) / 1000,
             },
           });
         }
