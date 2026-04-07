@@ -306,7 +306,25 @@ Respond ONLY with valid JSON matching this exact schema:
           referenceId: photoId,
         },
       });
-
+      // 1b. Treasury counterparty for compute fee (paired credit, Rule 3)
+      await tx.user.update({
+        where: { id: TREASURY_USER_ID },
+        data: { joulesBalance: { increment: scoreCostJ } },
+      });
+      const treasuryAfterFee = await tx.user.findUniqueOrThrow({
+        where: { id: TREASURY_USER_ID },
+        select: { joulesBalance: true },
+      });
+      await tx.ledgerEntry.create({
+        data: {
+          userId: TREASURY_USER_ID,
+          entryType: "COMPUTE_FEE",
+          amount: scoreCostJ,
+          balanceAfter: treasuryAfterFee.joulesBalance,
+          referenceType: "photo",
+          referenceId: photoId,
+        },
+      });
       // 3. Credit upload reward
       await tx.user.update({
         where: { id: userId },
