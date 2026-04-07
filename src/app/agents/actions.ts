@@ -4,6 +4,7 @@ import { Decimal } from "decimal.js";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AGENT_CREATE_KJ } from "@/lib/constants";
+import { TREASURY_USER_ID } from "@/lib/integrity";
 
 const agentCostJ = new Decimal(AGENT_CREATE_KJ).times(1000);
 
@@ -76,7 +77,25 @@ export async function createAgent(data: {
         referenceId: created.id,
       },
     });
-
+    // Treasury counterparty for agent registration fee (paired credit, Rule 3)
+    await tx.user.update({
+      where: { id: TREASURY_USER_ID },
+      data: { joulesBalance: { increment: agentCostJ } },
+    });
+    const treasuryAfterAgent = await tx.user.findUniqueOrThrow({
+      where: { id: TREASURY_USER_ID },
+      select: { joulesBalance: true },
+    });
+    await tx.ledgerEntry.create({
+      data: {
+        userId: TREASURY_USER_ID,
+        entryType: "AGENT_REGISTRATION_FEE",
+        amount: agentCostJ,
+        balanceAfter: treasuryAfterAgent.joulesBalance,
+        referenceType: "agent",
+        referenceId: created.id,
+      },
+    });
     return created;
   });
 
