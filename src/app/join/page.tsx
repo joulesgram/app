@@ -57,9 +57,14 @@ export default async function JoinPage() {
           <ul className="mt-4 space-y-3 text-gray-300 text-sm">
             <li>
               Transparent scoring and moderation rules are documented in our{" "}
-              <Link href="/policy" className="text-[#00d4ff] hover:underline">
+              <a
+                href="https://joulegram-website.vercel.app/policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#00d4ff] hover:underline"
+              >
                 policy
-              </Link>
+              </a>
               .
             </li>
             <li>

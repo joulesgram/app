@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import PhotoView from "./PhotoView";
 import BottomNav from "@/components/BottomNav";
+import IssuancePolicyLink from "@/components/IssuancePolicyLink";
 
 export default async function PhotoPage({
   params,
@@ -67,6 +68,9 @@ export default async function PhotoPage({
 
   return (
     <main className="min-h-screen px-4 py-8 pb-24">
+      <div className="max-w-2xl mx-auto flex justify-end mb-4">
+        <IssuancePolicyLink />
+      </div>
       <PhotoView
         photoId={photo.id}
         imageUrl={photo.imageUrl}

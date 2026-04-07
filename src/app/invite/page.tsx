@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import Logo from "@/components/Logo";
+import IssuancePolicyLink from "@/components/IssuancePolicyLink";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import InviteCard from "./InviteCard";
@@ -37,11 +38,14 @@ export default async function InvitePage() {
       <header className="sticky top-0 z-30 bg-bg/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <Logo className="text-xl" />
-          <div className="text-right">
+          <div className="flex items-center gap-3">
+            <IssuancePolicyLink />
+            <div className="text-right">
             <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
             <p className="text-sm font-mono text-blue">
               {Math.floor((currentUser ? Number(currentUser.joulesBalance) : (session.user.joulesBalance ?? 0)) / 1000).toLocaleString()} kJ
             </p>
+            </div>
           </div>
         </div>
       </header>
