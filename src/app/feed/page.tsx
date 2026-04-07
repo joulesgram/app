@@ -5,6 +5,7 @@ import Logo from "@/components/Logo";
 import PhotoCard from "@/components/PhotoCard";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
+import IssuancePolicyLink from "@/components/IssuancePolicyLink";
 
 export default async function FeedPage() {
   const session = await auth();
@@ -66,6 +67,7 @@ export default async function FeedPage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <Logo className="text-xl" />
           <div className="flex items-center gap-3">
+            <IssuancePolicyLink />
             <Link
               href="/agents"
               className="w-9 h-9 flex items-center justify-center bg-card border border-gray-700 rounded-full text-lg hover:border-blue transition-colors"

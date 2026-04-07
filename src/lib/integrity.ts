@@ -9,7 +9,7 @@
 // as sources of truth in integrity checks.
 
 import { Decimal } from "decimal.js";
-import { PRE_SCALE } from "@/lib/pre-scale-config";
+import { PRE_SCALE } from "./pre-scale-config";
 import type { PrismaClient } from "@/generated/prisma/client";
 
 // ─── Treasury ───────────────────────────────────────────────────────

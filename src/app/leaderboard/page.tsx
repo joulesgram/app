@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import BottomNav from "@/components/BottomNav";
 import Logo from "@/components/Logo";
+import IssuancePolicyLink from "@/components/IssuancePolicyLink";
 import { GENESIS_KJ, SIGNUP_TIERS } from "@/lib/constants";
 import { getTierLabel } from "@/lib/joules";
 import { getLeaderboard } from "@/lib/leaderboard";
@@ -20,7 +21,10 @@ export default async function LeaderboardPage() {
       <header className="sticky top-0 z-30 bg-bg/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Logo className="text-xl" />
-          <p className="text-xs text-gray-400">Updated just now</p>
+          <div className="flex items-center gap-3">
+            <IssuancePolicyLink />
+            <p className="text-xs text-gray-400">Updated just now</p>
+          </div>
         </div>
       </header>
 

@@ -41,6 +41,12 @@ enum LedgerEntryType {
   DAILY_LOGIN_BONUS
   RATE_EARN_FLAT
   PRE_SCALE_POST_GRANT
+
+  // Neutral (uncategorized) — used for migration opening balances.
+  // Intentionally not in any category set in src/lib/integrity.ts;
+  // passes Rules #1 and #2 trivially because both filter on their
+  // respective category sets at the DB layer. Either sign allowed.
+  OPENING_BALANCE
 }
 
 // ─── Models ─────────────────────────────────────────────────────────

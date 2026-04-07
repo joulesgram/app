@@ -24,12 +24,14 @@ export default async function Home() {
         <p className="mt-4 text-[#ff8a00] text-sm font-medium">
           First 100 users are Genesis Miners &mdash; 500 kJ
         </p>
-        <Link
-          href="/policy"
+        <a
+          href="https://joulegram-website.vercel.app/policy.html"
+          target="_blank"
+          rel="noopener noreferrer"
           className="mt-2 inline-block text-sm text-[#00d4ff] hover:brightness-110 transition"
         >
           See the issuance policy &rarr;
-        </Link>
+        </a>
         <div className="mt-10 animate-bounce text-gray-600 text-2xl">↓</div>
       </section>
 
@@ -286,9 +288,14 @@ export default async function Home() {
       {/* Footer */}
       <footer className="py-12 text-center text-sm text-gray-700 space-y-3">
         <div>
-          <Link href="/policy" className="text-gray-400 hover:text-[#00d4ff] transition-colors">
+          <a
+            href="https://joulegram-website.vercel.app/policy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-400 hover:text-[#00d4ff] transition-colors"
+          >
             Joule issuance policy
-          </Link>
+          </a>
         </div>
         <a
           href="https://github.com/joulesgram"
