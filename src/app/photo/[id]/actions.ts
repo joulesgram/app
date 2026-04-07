@@ -4,6 +4,7 @@ import { Decimal } from "decimal.js";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RATING_KJ } from "@/lib/constants";
+import { TREASURY_USER_ID } from "@/lib/integrity";
 
 const ratingCostJ = new Decimal(RATING_KJ).times(1000);
 
@@ -43,7 +44,7 @@ export async function submitRating(photoId: string, score: number) {
       select: { joulesBalance: true },
     });
 
-    await tx.ledgerEntry.create({
+await tx.ledgerEntry.create({
       data: {
         userId,
         entryType: "RATING_STAKE",
@@ -53,7 +54,25 @@ export async function submitRating(photoId: string, score: number) {
         referenceId: r.id,
       },
     });
-
+    // Treasury counterparty for rating stake (paired credit, Rule 3)
+    await tx.user.update({
+      where: { id: TREASURY_USER_ID },
+      data: { joulesBalance: { increment: ratingCostJ } },
+    });
+    const treasuryAfter = await tx.user.findUniqueOrThrow({
+      where: { id: TREASURY_USER_ID },
+      select: { joulesBalance: true },
+    });
+    await tx.ledgerEntry.create({
+      data: {
+        userId: TREASURY_USER_ID,
+        entryType: "RATING_STAKE",
+        amount: ratingCostJ,
+        balanceAfter: treasuryAfter.joulesBalance,
+        referenceType: "rating",
+        referenceId: r.id,
+      },
+    });
     return r;
   });
 
