@@ -2,7 +2,7 @@
 export const GENESIS_KJ = 25_000;
 export const PHOTO_SCORE_KJ = 75;
 export const AGENT_CREATE_KJ = 50;
-export const RATING_KJ = 0.1;
+export const RATING_KJ = 5;
 export const UPLOAD_REWARD_KJ = 5;
 
 // --- Rating ---
