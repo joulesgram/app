@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ScoreRing from "@/components/ScoreRing";
 import JouleSlider from "@/components/JouleSlider";
@@ -56,6 +56,8 @@ export default function PhotoView({
   const [humanAvg, setHumanAvg] = useState(initialHumanAvg);
   const [phase, setPhase] = useState<Phase>(alreadyRevealed ? "done" : "idle");
   const [error, setError] = useState<string | null>(null);
+  const [shouldFocusNext, setShouldFocusNext] = useState(false);
+  const nextButtonRef = useRef<HTMLButtonElement>(null);
 
   const showScores = phase === "done";
   const showRatingForm = !alreadyRevealed && userScore === null && phase !== "revealing";
@@ -73,19 +75,29 @@ export default function PhotoView({
       setUserScore(result.userScore);
       setHumanAvg(result.humanAvg);
       setPhase("revealing");
-      // Transition to done after a short reveal animation
+      // Transition to done after a short reveal animation. Stay on this
+      // photo so the user can read the AI agent ratings; they advance
+      // manually via the "Next photo →" button below.
       setTimeout(() => {
         setPhase("done");
-        if (nextPhotoId) {
-          router.push(`/photo/${nextPhotoId}`);
-        }
+        setShouldFocusNext(true);
       }, 1200);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to submit rating";
       setError(msg);
       setPhase("idle");
     }
-  }, [photoId, sliderValue, isLoggedIn, nextPhotoId, router]);
+  }, [photoId, sliderValue, isLoggedIn]);
+
+  // After a fresh reveal, move keyboard focus to the "Next photo" button
+  // so Enter advances without tabbing. Only triggered by a completed
+  // submission — never on initial mount for already-rated photos.
+  useEffect(() => {
+    if (shouldFocusNext && nextButtonRef.current) {
+      nextButtonRef.current.focus();
+      setShouldFocusNext(false);
+    }
+  }, [shouldFocusNext]);
 
   return (
     <div className="w-full max-w-lg mx-auto">
@@ -163,7 +175,6 @@ export default function PhotoView({
           </button>
           <p className="text-center text-xs text-gray-500">
             Rating costs {RATING_KJ} kJ.
-            {nextPhotoId ? " You'll jump to the next unrated photo automatically." : ""}
           </p>
 
           {error && (
@@ -201,11 +212,13 @@ export default function PhotoView({
 
           {userScore !== null && nextPhotoId && (
             <button
+              ref={nextButtonRef}
               onClick={() => router.push(`/photo/${nextPhotoId}`)}
               className="w-full py-3 rounded-xl border border-gray-700 text-gray-300 text-sm
-                         hover:border-blue hover:text-blue transition-colors"
+                         hover:border-blue hover:text-blue transition-colors
+                         focus:outline-none focus:border-blue focus:text-blue"
             >
-              Next unrated photo
+              Next photo →
             </button>
           )}
 
