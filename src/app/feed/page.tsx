@@ -6,6 +6,8 @@ import PhotoCard from "@/components/PhotoCard";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import IssuancePolicyLink from "@/components/IssuancePolicyLink";
+import BatteryWidget from "@/components/BatteryWidget";
+import { isSparkUIMode } from "@/lib/spark-ui";
 
 export default async function FeedPage() {
   const session = await auth();
@@ -77,9 +79,13 @@ export default async function FeedPage() {
             </Link>
             <div className="text-right">
               <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
-              <p className="text-sm font-mono text-blue">
-                {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
-              </p>
+              {isSparkUIMode({ joulesBalance: session.user.joulesBalance ?? 0 }) ? (
+                <BatteryWidget joulesBalance={session.user.joulesBalance ?? 0} size="sm" />
+              ) : (
+                <p className="text-sm font-mono text-blue">
+                  {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
+                </p>
+              )}
             </div>
           </div>
         </div>
