@@ -283,19 +283,73 @@ Respond ONLY with valid JSON matching this exact schema:
     const uploadRewardJ = new Decimal(5).times(1000); // 5 kJ
 
     await prisma.$transaction(async (tx) => {
-      // 1. Try the normal path first: atomic CAS on balance >= scoreCostJ.
-      //    If it succeeds, charge COMPUTE_FEE + treasury counterparty.
-      //    If it fails (insufficient balance), try the rate-to-post unlock:
-      //    atomic CAS on ratingsSinceLastPost >= 5, reset to 0, skip the
-      //    COMPUTE_FEE debit entirely, and emit a zero-amount
-      //    PRE_SCALE_POST_GRANT marker row for auditability.
-      const normalUpdate = await tx.user.updateMany({
-        where: { id: userId, joulesBalance: { gte: scoreCostJ } },
-        data: { joulesBalance: { decrement: scoreCostJ } },
+      // 1. Try the rate-to-post unlock CAS FIRST. If the user has earned
+      //    a free upload (ratingsSinceLastPost >= 5), honour it regardless
+      //    of balance — the UI promised them a free upload and we must
+      //    not charge them. Atomic CAS resets the counter to 0 in the
+      //    same write. If the unlock CAS fails, fall back to the balance
+      //    CAS, which ALSO resets the counter — every successful upload
+      //    resets ratingsSinceLastPost, paid or free.
+      const unlockUpdate = await tx.user.updateMany({
+        where: { id: userId, ratingsSinceLastPost: { gte: 5 } },
+        data: { ratingsSinceLastPost: 0 },
       });
 
-      if (normalUpdate.count > 0) {
+      if (unlockUpdate.count > 0) {
+        // ── Rate-to-post unlock path ──
+        // Skip COMPUTE_FEE entirely. Emit paired zero-amount
+        // PRE_SCALE_POST_GRANT marker rows on user + treasury sides for
+        // auditability. PRE_SCALE_POST_GRANT is uncategorized in
+        // integrity.ts, so zero amount passes Rules #1 and #2 trivially.
+        // Rules #3 and #4 stay satisfied because the paired treasury row
+        // is also zero.
+        const userAfterUnlock = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { joulesBalance: true },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: userId,
+            entryType: "PRE_SCALE_POST_GRANT",
+            amount: new Decimal(0),
+            balanceAfter: userAfterUnlock.joulesBalance,
+            referenceType: "rate_to_post_unlock",
+            referenceId: photoId,
+          },
+        });
+        // Paired treasury marker row (also zero-amount).
+        const treasuryAfterUnlock = await tx.user.findUniqueOrThrow({
+          where: { id: TREASURY_USER_ID },
+          select: { joulesBalance: true },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: TREASURY_USER_ID,
+            entryType: "PRE_SCALE_POST_GRANT",
+            amount: new Decimal(0),
+            balanceAfter: treasuryAfterUnlock.joulesBalance,
+            referenceType: "rate_to_post_unlock",
+            referenceId: photoId,
+          },
+        });
+      } else {
         // ── Normal path: COMPUTE_FEE charged ──
+        // Atomic CAS on balance >= scoreCostJ; also reset
+        // ratingsSinceLastPost to 0 in the same write so the counter
+        // doesn't accumulate across paid uploads (a paid upload still
+        // counts as "a post since last reset").
+        const balanceUpdate = await tx.user.updateMany({
+          where: { id: userId, joulesBalance: { gte: scoreCostJ } },
+          data: {
+            joulesBalance: { decrement: scoreCostJ },
+            ratingsSinceLastPost: 0,
+          },
+        });
+
+        if (balanceUpdate.count === 0) {
+          throw new Error("Insufficient balance and not enough ratings");
+        }
+
         const afterDebit = await tx.user.findUniqueOrThrow({
           where: { id: userId },
           select: { joulesBalance: true },
@@ -327,51 +381,6 @@ Respond ONLY with valid JSON matching this exact schema:
             amount: scoreCostJ,
             balanceAfter: treasuryAfterFee.joulesBalance,
             referenceType: "photo",
-            referenceId: photoId,
-          },
-        });
-      } else {
-        // ── Rate-to-post unlock path ──
-        // Atomic CAS on ratingsSinceLastPost; reset to 0 in the same write.
-        const unlockUpdate = await tx.user.updateMany({
-          where: { id: userId, ratingsSinceLastPost: { gte: 5 } },
-          data: { ratingsSinceLastPost: 0 },
-        });
-
-        if (unlockUpdate.count === 0) {
-          throw new Error("Insufficient balance and not enough ratings");
-        }
-
-        // Emit zero-amount PRE_SCALE_POST_GRANT marker on user side.
-        // PRE_SCALE_POST_GRANT is uncategorized in integrity.ts, so zero
-        // amount passes Rules #1 and #2 trivially. Rules #3 and #4 stay
-        // satisfied because the paired treasury row is also zero.
-        const userAfterUnlock = await tx.user.findUniqueOrThrow({
-          where: { id: userId },
-          select: { joulesBalance: true },
-        });
-        await tx.ledgerEntry.create({
-          data: {
-            userId: userId,
-            entryType: "PRE_SCALE_POST_GRANT",
-            amount: new Decimal(0),
-            balanceAfter: userAfterUnlock.joulesBalance,
-            referenceType: "rate_to_post_unlock",
-            referenceId: photoId,
-          },
-        });
-        // Paired treasury marker row (also zero-amount).
-        const treasuryAfterUnlock = await tx.user.findUniqueOrThrow({
-          where: { id: TREASURY_USER_ID },
-          select: { joulesBalance: true },
-        });
-        await tx.ledgerEntry.create({
-          data: {
-            userId: TREASURY_USER_ID,
-            entryType: "PRE_SCALE_POST_GRANT",
-            amount: new Decimal(0),
-            balanceAfter: treasuryAfterUnlock.joulesBalance,
-            referenceType: "rate_to_post_unlock",
             referenceId: photoId,
           },
         });
