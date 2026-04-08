@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import Logo from "@/components/Logo";
 import IssuancePolicyLink from "@/components/IssuancePolicyLink";
+import BatteryWidget from "@/components/BatteryWidget";
+import { isSparkUIMode } from "@/lib/spark-ui";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import InviteCard from "./InviteCard";
@@ -42,9 +44,16 @@ export default async function InvitePage() {
             <IssuancePolicyLink />
             <div className="text-right">
             <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
-            <p className="text-sm font-mono text-blue">
-              {Math.floor((currentUser ? Number(currentUser.joulesBalance) : (session.user.joulesBalance ?? 0)) / 1000).toLocaleString()} kJ
-            </p>
+            {(() => {
+              const balanceJ = currentUser ? Number(currentUser.joulesBalance) : (session.user.joulesBalance ?? 0);
+              return isSparkUIMode({ joulesBalance: balanceJ }) ? (
+                <BatteryWidget joulesBalance={balanceJ} size="sm" />
+              ) : (
+                <p className="text-sm font-mono text-blue">
+                  {Math.floor(balanceJ / 1000).toLocaleString()} kJ
+                </p>
+              );
+            })()}
             </div>
           </div>
         </div>

@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import Logo from "@/components/Logo";
 import BottomNav from "@/components/BottomNav";
 import IssuancePolicyLink from "@/components/IssuancePolicyLink";
+import BatteryWidget from "@/components/BatteryWidget";
+import { isSparkUIMode } from "@/lib/spark-ui";
 import UploadForm from "./UploadForm";
 
 export default async function UploadPage() {
@@ -18,9 +20,13 @@ export default async function UploadPage() {
             <IssuancePolicyLink />
             <div className="text-right">
               <p className="text-xs text-gray-500">@{session.user.username ?? "user"}</p>
-              <p className="text-sm font-mono text-blue">
-                {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
-              </p>
+              {isSparkUIMode({ joulesBalance: session.user.joulesBalance ?? 0 }) ? (
+                <BatteryWidget joulesBalance={session.user.joulesBalance ?? 0} size="sm" />
+              ) : (
+                <p className="text-sm font-mono text-blue">
+                  {Math.floor((session.user.joulesBalance ?? 0) / 1000).toLocaleString()} kJ
+                </p>
+              )}
             </div>
           </div>
         </div>
