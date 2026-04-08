@@ -40,11 +40,19 @@ export const RESERVE_GRANT_TYPES = [
 
 export const STAKE_RESOLUTION_TYPES = ["STAKE_RETURN", "STAKE_BONUS"] as const;
 
+// Pre-Scale bootstrap-pool transfer types. Rule #5 aggregates amount > 0
+// entries of these types against BootstrapPool.totalMintedKj to assert
+// pool conservation.
+//
+// Intentionally uncategorized (NOT in any set above): OPENING_BALANCE
+// (migration opening balances) and PRE_SCALE_POST_GRANT (zero-amount
+// marker row emitted by the rate-to-post unlock path). They pass
+// Rules #1 and #2 trivially because those rules filter on category
+// membership at the DB layer; Rules #3 and #4 still apply via amount.
 export const PRE_SCALE_TYPES = [
   "REGEN_DRIP",
   "DAILY_LOGIN_BONUS",
   "RATE_EARN_FLAT",
-  "PRE_SCALE_POST_GRANT",
 ] as const;
 
 const VALID_DEBIT_REFERENCE_TYPES = new Set([

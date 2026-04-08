@@ -32,10 +32,14 @@ export async function submitRating(photoId: string, score: number) {
       data: { photoId, userId, score: roundedScore },
     });
 
-    // Atomic CAS for balance deduction
+    // Atomic CAS for balance deduction + ratingsSinceLastPost increment.
+    // Both fields update in the same row write, no race window between them.
     const updated = await tx.user.updateMany({
       where: { id: userId, joulesBalance: { gte: ratingCostJ } },
-      data: { joulesBalance: { decrement: ratingCostJ } },
+      data: {
+        joulesBalance: { decrement: ratingCostJ },
+        ratingsSinceLastPost: { increment: 1 },
+      },
     });
     if (updated.count === 0) throw new Error("Insufficient balance");
 
