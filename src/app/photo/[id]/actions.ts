@@ -79,6 +79,10 @@ await tx.ledgerEntry.create({
 
     // Day 3: flat rate-to-earn. Credit 5 kJ back, capped at 20 per UTC day.
     // Net cost to user: 0 kJ when under cap. Stake debit above is unchanged.
+    // Note: count-then-insert under Read Committed isolation means two
+    // concurrent ratings from the same user could both observe count=19 and
+    // each insert, briefly overshooting the cap. Acceptable at current scale;
+    // revisit with a unique (userId, utcDate, seq) index if it matters.
     const todayUtcMidnight = new Date();
     todayUtcMidnight.setUTCHours(0, 0, 0, 0);
 
