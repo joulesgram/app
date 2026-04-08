@@ -20,18 +20,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "imageUrl required" }, { status: 400 });
     }
 
-    // Check user has enough joules for scoring
+    // Check user has enough joules for scoring, OR has earned the
+    // rate-to-post unlock (>= 5 ratings since their last post). The
+    // actual CAS + reset happens atomically inside /api/score; this is
+    // a pre-flight guard so we don't create an orphan Photo row for
+    // users who can neither pay nor unlock.
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { joulesBalance: true },
+      select: { joulesBalance: true, ratingsSinceLastPost: true },
     });
 
-    if (!user || new Decimal(user.joulesBalance.toString()).lt(scoreCostJ)) {
+    const hasBalance =
+      !!user && new Decimal(user.joulesBalance.toString()).gte(scoreCostJ);
+    const hasUnlock = !!user && user.ratingsSinceLastPost >= 5;
+
+    if (!user || (!hasBalance && !hasUnlock)) {
       const balanceKj = user
         ? new Decimal(user.joulesBalance.toString()).div(1000).toNumber()
         : 0;
+      const ratings = user?.ratingsSinceLastPost ?? 0;
       return NextResponse.json(
-        { error: `Not enough energy. Need ${PHOTO_SCORE_KJ} kJ, have ${balanceKj} kJ` },
+        {
+          error: `Not enough energy. Need ${PHOTO_SCORE_KJ} kJ (have ${balanceKj} kJ), or rate 5 photos to unlock a free post (${ratings}/5).`,
+        },
         { status: 400 }
       );
     }

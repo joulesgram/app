@@ -283,49 +283,101 @@ Respond ONLY with valid JSON matching this exact schema:
     const uploadRewardJ = new Decimal(5).times(1000); // 5 kJ
 
     await prisma.$transaction(async (tx) => {
-      // 1. Deduct scoring cost (atomic CAS)
-      const updated = await tx.user.updateMany({
+      // 1. Try the normal path first: atomic CAS on balance >= scoreCostJ.
+      //    If it succeeds, charge COMPUTE_FEE + treasury counterparty.
+      //    If it fails (insufficient balance), try the rate-to-post unlock:
+      //    atomic CAS on ratingsSinceLastPost >= 5, reset to 0, skip the
+      //    COMPUTE_FEE debit entirely, and emit a zero-amount
+      //    PRE_SCALE_POST_GRANT marker row for auditability.
+      const normalUpdate = await tx.user.updateMany({
         where: { id: userId, joulesBalance: { gte: scoreCostJ } },
         data: { joulesBalance: { decrement: scoreCostJ } },
       });
-      if (updated.count === 0) throw new Error("Insufficient balance for scoring");
 
-      // 2. Read updated balance
-      const afterDebit = await tx.user.findUniqueOrThrow({
-        where: { id: userId },
-        select: { joulesBalance: true },
-      });
+      if (normalUpdate.count > 0) {
+        // ── Normal path: COMPUTE_FEE charged ──
+        const afterDebit = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { joulesBalance: true },
+        });
 
-      await tx.ledgerEntry.create({
-        data: {
-          userId: userId,
-          entryType: "COMPUTE_FEE",
-          amount: scoreCostJ.negated(),
-          balanceAfter: afterDebit.joulesBalance,
-          referenceType: "photo",
-          referenceId: photoId,
-        },
-      });
-      // 1b. Treasury counterparty for compute fee (paired credit, Rule 3)
-      await tx.user.update({
-        where: { id: TREASURY_USER_ID },
-        data: { joulesBalance: { increment: scoreCostJ } },
-      });
-      const treasuryAfterFee = await tx.user.findUniqueOrThrow({
-        where: { id: TREASURY_USER_ID },
-        select: { joulesBalance: true },
-      });
-      await tx.ledgerEntry.create({
-        data: {
-          userId: TREASURY_USER_ID,
-          entryType: "COMPUTE_FEE",
-          amount: scoreCostJ,
-          balanceAfter: treasuryAfterFee.joulesBalance,
-          referenceType: "photo",
-          referenceId: photoId,
-        },
-      });
-      // 3. Credit upload reward
+        await tx.ledgerEntry.create({
+          data: {
+            userId: userId,
+            entryType: "COMPUTE_FEE",
+            amount: scoreCostJ.negated(),
+            balanceAfter: afterDebit.joulesBalance,
+            referenceType: "photo",
+            referenceId: photoId,
+          },
+        });
+        // Treasury counterparty for compute fee (paired credit, Rule 3)
+        await tx.user.update({
+          where: { id: TREASURY_USER_ID },
+          data: { joulesBalance: { increment: scoreCostJ } },
+        });
+        const treasuryAfterFee = await tx.user.findUniqueOrThrow({
+          where: { id: TREASURY_USER_ID },
+          select: { joulesBalance: true },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: TREASURY_USER_ID,
+            entryType: "COMPUTE_FEE",
+            amount: scoreCostJ,
+            balanceAfter: treasuryAfterFee.joulesBalance,
+            referenceType: "photo",
+            referenceId: photoId,
+          },
+        });
+      } else {
+        // ── Rate-to-post unlock path ──
+        // Atomic CAS on ratingsSinceLastPost; reset to 0 in the same write.
+        const unlockUpdate = await tx.user.updateMany({
+          where: { id: userId, ratingsSinceLastPost: { gte: 5 } },
+          data: { ratingsSinceLastPost: 0 },
+        });
+
+        if (unlockUpdate.count === 0) {
+          throw new Error("Insufficient balance and not enough ratings");
+        }
+
+        // Emit zero-amount PRE_SCALE_POST_GRANT marker on user side.
+        // PRE_SCALE_POST_GRANT is uncategorized in integrity.ts, so zero
+        // amount passes Rules #1 and #2 trivially. Rules #3 and #4 stay
+        // satisfied because the paired treasury row is also zero.
+        const userAfterUnlock = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { joulesBalance: true },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: userId,
+            entryType: "PRE_SCALE_POST_GRANT",
+            amount: new Decimal(0),
+            balanceAfter: userAfterUnlock.joulesBalance,
+            referenceType: "rate_to_post_unlock",
+            referenceId: photoId,
+          },
+        });
+        // Paired treasury marker row (also zero-amount).
+        const treasuryAfterUnlock = await tx.user.findUniqueOrThrow({
+          where: { id: TREASURY_USER_ID },
+          select: { joulesBalance: true },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: TREASURY_USER_ID,
+            entryType: "PRE_SCALE_POST_GRANT",
+            amount: new Decimal(0),
+            balanceAfter: treasuryAfterUnlock.joulesBalance,
+            referenceType: "rate_to_post_unlock",
+            referenceId: photoId,
+          },
+        });
+      }
+
+      // 2. Credit upload reward (both paths)
       await tx.user.update({
         where: { id: userId },
         data: { joulesBalance: { increment: uploadRewardJ } },
