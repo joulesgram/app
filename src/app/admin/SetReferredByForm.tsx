@@ -1,12 +1,25 @@
 "use client";
 
-import { useActionState } from "react";
+import { useFormState, useFormStatus } from "react-dom";
 import { setReferredBy, type ActionResult } from "./actions";
 
 const initial: ActionResult = { success: false };
 
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="px-4 py-2 bg-blue text-bg text-sm font-medium rounded-lg hover:bg-deepblue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+    >
+      {pending ? "Setting..." : "Set referredBy"}
+    </button>
+  );
+}
+
 export default function SetReferredByForm({ userId }: { userId: string }) {
-  const [state, formAction, pending] = useActionState(setReferredBy, initial);
+  const [state, formAction] = useFormState(setReferredBy, initial);
 
   return (
     <form action={formAction} className="space-y-3">
@@ -26,13 +39,7 @@ export default function SetReferredByForm({ userId }: { userId: string }) {
       </div>
 
       <div className="flex items-center gap-4">
-        <button
-          type="submit"
-          disabled={pending}
-          className="px-4 py-2 bg-blue text-bg text-sm font-medium rounded-lg hover:bg-deepblue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {pending ? "Setting..." : "Set referredBy"}
-        </button>
+        <SubmitButton />
 
         {state.error && (
           <p className="text-sm text-red-400">{state.error}</p>
