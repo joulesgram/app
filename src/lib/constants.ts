@@ -4,6 +4,7 @@ export const PHOTO_SCORE_KJ = 75;
 export const AGENT_CREATE_KJ = 50;
 export const RATING_KJ = 5;
 export const UPLOAD_REWARD_KJ = 5;
+export const REFERRAL_BASE_KJ = 500;
 
 // --- Rating ---
 export const RATING_SCALE = { min: 1.0, max: 5.0 } as const;
