@@ -41,7 +41,7 @@ export const RESERVE_GRANT_TYPES = [
 export const STAKE_RESOLUTION_TYPES = ["STAKE_RETURN", "STAKE_BONUS"] as const;
 
 // Pre-Scale bootstrap-pool transfer types. Rule #5 aggregates amount > 0
-// entries of these types against BootstrapPool.totalMintedKj to assert
+// entries of these types against BootstrapPool.totalMintedJ to assert
 // pool conservation.
 //
 // Intentionally uncategorized (NOT in any set above): OPENING_BALANCE
@@ -73,9 +73,12 @@ export interface IntegrityResult {
 export async function assertDebitsHaveActions(
   prisma: PrismaClient
 ): Promise<IntegrityResult> {
+  // Exclude treasury counterparty rows — they carry the same entryType as
+  // the user-side debit they pair with but have amount > 0 by design.
   const badDebits = await prisma.ledgerEntry.findMany({
     where: {
       entryType: { in: [...DEBIT_TYPES] },
+      userId: { not: TREASURY_USER_ID },
       OR: [
         { amount: { gte: 0 } },
         { referenceType: null },
@@ -86,10 +89,11 @@ export async function assertDebitsHaveActions(
     take: 10,
   });
 
-  // Also check that referenceType is valid
+  // Also check that referenceType is valid (same treasury exclusion)
   const invalidRefType = await prisma.ledgerEntry.findMany({
     where: {
       entryType: { in: [...DEBIT_TYPES] },
+      userId: { not: TREASURY_USER_ID },
       referenceType: { notIn: Array.from(VALID_DEBIT_REFERENCE_TYPES) },
     },
     select: { id: true, entryType: true, referenceType: true },
@@ -205,7 +209,7 @@ export async function assertBalancesReproducible(
 }
 
 // ─── Rule #5: Bootstrap pool conservation (Pre-Scale only) ──────────
-// totalMintedKj = SUM(all PRE_SCALE_TYPES transfers out in kJ) + remainingKj
+// totalMintedJ = SUM(all PRE_SCALE_TYPES transfers out in J) + remainingJ
 export async function assertBootstrapPoolConservation(
   prisma: PrismaClient
 ): Promise<IntegrityResult> {
@@ -221,8 +225,8 @@ export async function assertBootstrapPoolConservation(
     return { rule: "Rule #5", passed: true, details: "Bootstrap pool is closed" };
   }
 
-  // Sum all Pre-Scale type entries where amount > 0 (credits to real users)
-  // These are in joules; convert to kJ for comparison with pool.
+  // Sum all Pre-Scale type entries where amount > 0 (credits to real users).
+  // Both ledger amounts and pool fields are in joules — no conversion needed.
   const result = await prisma.ledgerEntry.aggregate({
     where: {
       entryType: { in: [...PRE_SCALE_TYPES] },
@@ -232,20 +236,19 @@ export async function assertBootstrapPoolConservation(
   });
 
   const totalTransferredJ = new Decimal(result._sum.amount?.toString() ?? "0");
-  const totalTransferredKj = totalTransferredJ.div(1000);
-  const remainingKj = new Decimal(pool.remainingKj.toString());
-  const totalMintedKj = new Decimal(pool.totalMintedKj.toString());
+  const remainingJ = new Decimal(pool.remainingJ.toString());
+  const totalMintedJ = new Decimal(pool.totalMintedJ.toString());
 
-  const expected = totalTransferredKj.plus(remainingKj);
+  const expected = totalTransferredJ.plus(remainingJ);
 
-  if (expected.eq(totalMintedKj)) {
-    return { rule: "Rule #5", passed: true, details: `Bootstrap pool conserved: ${totalMintedKj} kJ` };
+  if (expected.eq(totalMintedJ)) {
+    return { rule: "Rule #5", passed: true, details: `Bootstrap pool conserved: ${totalMintedJ} J` };
   }
 
   return {
     rule: "Rule #5",
     passed: false,
-    details: `Bootstrap pool mismatch: minted=${totalMintedKj}, transferred=${totalTransferredKj}, remaining=${remainingKj}, expected=${expected}`,
+    details: `Bootstrap pool mismatch: minted=${totalMintedJ}, transferred=${totalTransferredJ}, remaining=${remainingJ}, expected=${expected}`,
   };
 }
 

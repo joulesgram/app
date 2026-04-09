@@ -150,8 +150,8 @@ model LedgerEntry {
 
 model BootstrapPool {
   poolId        String    @id
-  totalMintedKj BigInt
-  remainingKj   BigInt
+  totalMintedJ BigInt
+  remainingJ   BigInt
   createdAt     DateTime  @default(now())
   closedAt      DateTime?
 }
