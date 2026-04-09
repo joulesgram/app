@@ -33,10 +33,10 @@ function corsHeaders(origin: string): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "cache-control": "public, s-maxage=60, stale-while-revalidate=300",
+    "vary": "origin",
   };
   if (ALLOWED_ORIGINS.includes(origin)) {
     headers["access-control-allow-origin"] = origin;
-    headers["vary"] = "origin";
   }
   return headers;
 }
