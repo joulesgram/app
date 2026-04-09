@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { Decimal } from "decimal.js";
 import { prisma } from "@/lib/prisma";
 import { getSignupReward, chainReward } from "@/lib/joules";
+import { REFERRAL_BASE_KJ } from "@/lib/constants";
 import { TREASURY_USER_ID } from "@/lib/integrity";
 import { grantDailyLoginBonus, isPreScaleModeEnabled } from "@/lib/pre-scale";
 import type { User as PrismaUser } from "@/generated/prisma/client";
@@ -222,7 +223,7 @@ async function processReferralChain(
     if (!ancestor || ancestor.id === newUserId) break;
 
     if (ancestor.active) {
-      const rewardKj = chainReward(level);
+      const rewardKj = REFERRAL_BASE_KJ * chainReward(level);
       if (rewardKj <= 0) break;
       const rewardJ = new Decimal(rewardKj).times(1000);
 
