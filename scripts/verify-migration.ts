@@ -191,8 +191,8 @@ async function main(): Promise<number> {
     } else {
       for (const p of pools) {
         console.log(`poolId:         ${p.poolId}`);
-        console.log(`totalMintedKj:  ${p.totalMintedKj.toString()}`);
-        console.log(`remainingKj:    ${p.remainingKj.toString()}`);
+        console.log(`totalMintedJ:   ${p.totalMintedJ.toString()}`);
+        console.log(`remainingJ:     ${p.remainingJ.toString()}`);
         console.log(`closedAt:       ${p.closedAt?.toISOString() ?? "(open)"}`);
       }
     }

@@ -19,7 +19,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 
 const BOOTSTRAP_POOL_ID = "pre_scale_v1";
-const BOOTSTRAP_POOL_KJ = 10_000_000; // 10 MJ
+const BOOTSTRAP_POOL_J = 10_000_000_000; // 10 MJ in joules
 
 function getCleanUrl(): string {
   const raw = process.env.POSTGRES_PRISMA_URL || process.env.DATABASE_URL || "";
@@ -50,19 +50,19 @@ async function main() {
     });
 
     if (existingPool) {
-      console.log(`Bootstrap pool already exists: ${existingPool.remainingKj} kJ remaining`);
+      console.log(`Bootstrap pool already exists: ${existingPool.remainingJ} J remaining`);
       return;
     }
 
     await prisma.bootstrapPool.create({
       data: {
         poolId: BOOTSTRAP_POOL_ID,
-        totalMintedKj: BigInt(BOOTSTRAP_POOL_KJ),
-        remainingKj: BigInt(BOOTSTRAP_POOL_KJ),
+        totalMintedJ: BigInt(BOOTSTRAP_POOL_J),
+        remainingJ: BigInt(BOOTSTRAP_POOL_J),
       },
     });
 
-    console.log(`Bootstrap pool created: ${BOOTSTRAP_POOL_KJ.toLocaleString()} kJ`);
+    console.log(`Bootstrap pool created: ${BOOTSTRAP_POOL_J.toLocaleString()} J`);
     console.log("Done! Pre-Scale Mode is now ready to activate.");
   } finally {
     await prisma.$disconnect();

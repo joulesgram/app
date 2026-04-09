@@ -30,8 +30,8 @@ export const PRE_SCALE = {
   /** Consecutive days the threshold must be met */
   GRADUATION_WINDOW_DAYS: 7,
 
-  /** Bootstrap pool total in kJ (stored as kJ in the BootstrapPool table) */
-  BOOTSTRAP_POOL_KJ: 10_000_000, // 10 MJ
+  /** Bootstrap pool total in joules (stored as J in the BootstrapPool table) */
+  BOOTSTRAP_POOL_J: 10_000_000_000, // 10 MJ = 10,000,000 kJ = 10,000,000,000 J
 
   /** Bootstrap pool ID */
   BOOTSTRAP_POOL_ID: "pre_scale_v1",
