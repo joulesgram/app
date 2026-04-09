@@ -9,6 +9,9 @@ import {
   RESERVE_GRANT_TYPES,
   STAKE_RESOLUTION_TYPES,
 } from "@/lib/integrity";
+import CreditDebitForm from "@/app/admin/CreditDebitForm";
+import ResetCounterButton from "@/app/admin/ResetCounterButton";
+import SetReferredByForm from "@/app/admin/SetReferredByForm";
 
 const DEBIT_SET = new Set<string>(DEBIT_TYPES);
 const CREDIT_SET = new Set<string>([
@@ -132,7 +135,7 @@ export default async function AdminUserPage({
             </Link>
             <h1 className="text-xl font-bold">@{user.username}</h1>
           </div>
-          <p className="text-xs text-gray-500">read-only · founder view</p>
+          <p className="text-xs text-gray-500">founder view</p>
         </div>
       </header>
 
@@ -150,7 +153,13 @@ export default async function AdminUserPage({
               <span className="text-blue">{formatKj(user.joulesBalance)}</span>
             </Field>
             <Field label="ratings since last post">
-              {user.ratingsSinceLastPost}
+              <span className="inline-flex items-center gap-2">
+                {user.ratingsSinceLastPost}
+                <ResetCounterButton
+                  userId={user.id}
+                  currentCount={user.ratingsSinceLastPost}
+                />
+              </span>
             </Field>
             <Field label="joined">
               {relativeTime(user.createdAt)}{" "}
@@ -172,6 +181,18 @@ export default async function AdminUserPage({
           </div>
         </section>
 
+        {/* Set referredBy — only when missing */}
+        {user.referredBy === null && (
+          <section>
+            <h2 className="text-sm uppercase tracking-wider text-gray-400 mb-3">
+              Set referredBy (currently unset)
+            </h2>
+            <div className="bg-card border border-gray-800 rounded-xl p-5">
+              <SetReferredByForm userId={user.id} />
+            </div>
+          </section>
+        )}
+
         {/* Per-user reconciliation */}
         <section>
           <h2 className="text-sm uppercase tracking-wider text-gray-400 mb-3">
@@ -189,6 +210,16 @@ export default async function AdminUserPage({
                 {ledgerSum.toFixed(4)} J vs balance {balance.toFixed(4)} J
               </p>
             )}
+          </div>
+        </section>
+
+        {/* Credit / debit */}
+        <section>
+          <h2 className="text-sm uppercase tracking-wider text-gray-400 mb-3">
+            Credit / debit
+          </h2>
+          <div className="bg-card border border-gray-800 rounded-xl p-5">
+            <CreditDebitForm userId={user.id} />
           </div>
         </section>
 

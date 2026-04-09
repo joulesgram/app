@@ -62,6 +62,14 @@ function formatKj(v: unknown): string {
   return `${d.div(1000).toFixed(1)} kJ`;
 }
 
+function actionResultColor(result: string): string {
+  if (result === "success") return "text-green-400";
+  if (result === "failed" || result === "integrity_failed")
+    return "text-red-400";
+  if (result === "pending") return "text-yellow-400";
+  return "text-gray-400";
+}
+
 export default async function AdminPage() {
   const session = await auth();
   if (!session?.user || session.user.userNumber !== 1) notFound();
@@ -146,12 +154,36 @@ export default async function AdminPage() {
     orderBy: { _count: { entryType: "desc" } },
   });
 
+  // ── Section 5: Recent admin actions ──
+  const recentActions = await prisma.adminAction.findMany({
+    take: 20,
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Resolve operator and target usernames in one batch
+  const actionUserIds = Array.from(
+    new Set(
+      recentActions.flatMap((a) =>
+        [a.operatorId, a.targetUserId].filter(
+          (id): id is string => id !== null
+        )
+      )
+    )
+  );
+  const actionUsers = actionUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: actionUserIds } },
+        select: { id: true, username: true },
+      })
+    : [];
+  const actionUserMap = new Map(actionUsers.map((u) => [u.id, u.username]));
+
   return (
     <main className="min-h-screen pb-20 bg-bg text-gray-200">
       <header className="sticky top-0 z-30 bg-bg/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">Joulegram Admin</h1>
-          <p className="text-xs text-gray-500">read-only · founder view</p>
+          <p className="text-xs text-gray-500">founder view</p>
         </div>
       </header>
 
@@ -358,6 +390,59 @@ export default async function AdminPage() {
                       className={`text-right font-mono text-xs ${entryTypeColor(row.entryType)}`}
                     >
                       {formatJ(row._sum.amount ?? 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Section 5: Recent admin actions */}
+        <section>
+          <h2 className="text-sm uppercase tracking-wider text-gray-400 mb-3">
+            Recent admin actions
+          </h2>
+          {recentActions.length === 0 ? (
+            <p className="text-sm text-gray-500">No admin actions yet</p>
+          ) : (
+            <div className="rounded-xl border border-gray-800 overflow-hidden">
+              <div className="grid grid-cols-[88px_120px_160px_140px_120px_1fr] bg-[#0d1423] px-4 py-3 text-xs uppercase tracking-wider text-gray-400">
+                <span>time</span>
+                <span>operator</span>
+                <span>operation</span>
+                <span>target</span>
+                <span>result</span>
+                <span>error</span>
+              </div>
+              <div className="divide-y divide-gray-800">
+                {recentActions.map((a) => (
+                  <div
+                    key={a.id}
+                    className="grid grid-cols-[88px_120px_160px_140px_120px_1fr] px-4 py-2 text-sm items-center"
+                  >
+                    <span className="font-mono text-xs text-gray-400">
+                      {formatTime(a.createdAt)}
+                    </span>
+                    <span className="text-xs text-gray-300 truncate">
+                      @{actionUserMap.get(a.operatorId) ??
+                        a.operatorId.slice(0, 8)}
+                    </span>
+                    <span className="text-xs font-mono text-gray-200">
+                      {a.operation}
+                    </span>
+                    <span className="text-xs text-gray-300 truncate">
+                      {a.targetUserId
+                        ? `@${actionUserMap.get(a.targetUserId) ?? a.targetUserId.slice(0, 8)}`
+                        : "—"}
+                    </span>
+                    <span
+                      className={`text-xs font-mono ${actionResultColor(a.result)}`}
+                    >
+                      {a.result}
+                    </span>
+                    <span className="text-xs text-gray-500 truncate">
+                      {a.errorMessage ?? "—"}
                     </span>
                   </div>
                 ))}

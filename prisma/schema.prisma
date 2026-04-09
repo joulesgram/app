@@ -170,3 +170,19 @@ model CronRunLog {
 
   @@unique([jobName, bucketKey])
 }
+
+// ─── Admin audit log ───────────────────────────────────────────────
+
+model AdminAction {
+  id           String   @id @default(cuid())
+  operatorId   String
+  operation    String   // "credit_debit" | "reset_counter" | "set_referredby"
+  targetUserId String?
+  payload      Json
+  result       String   // "pending" | "success" | "failed"
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([operatorId])
+}
