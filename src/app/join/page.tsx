@@ -79,9 +79,12 @@ export default async function JoinPage() {
         </section>
 
         <JoinCtas
-          onSignIn={async () => {
+          onSignIn={async (formData: FormData) => {
             "use server";
-            await signIn("github");
+            await signIn("resend", {
+              email: formData.get("email") as string,
+              redirectTo: "/feed",
+            });
           }}
         />
       </section>
