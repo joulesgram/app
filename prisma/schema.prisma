@@ -64,6 +64,7 @@ model User {
   referredBy    String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
+  bootstrapped  Boolean  @default(false)
 
   lastLoginBonusDate   DateTime?
   ratingsSinceLastPost Int       @default(0)
