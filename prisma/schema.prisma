@@ -186,3 +186,13 @@ model AdminAction {
   @@index([createdAt])
   @@index([operatorId])
 }
+// ─── Auth.js email provider ──────────────────────────────────────────────
+// Required by the Resend (email) provider to store hashed magic-link tokens.
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_token")
+}
