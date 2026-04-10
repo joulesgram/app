@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Resend from "next-auth/providers/resend";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { Adapter } from "next-auth/adapters";
 import { cookies } from "next/headers";
 import { Decimal } from "decimal.js";
 import { prisma } from "@/lib/prisma";
@@ -20,9 +20,28 @@ declare module "next-auth" {
   }
 }
 
+// Minimal adapter: only implements the two methods the email provider needs.
+// Everything else (user creation, sessions) is handled by your existing
+// signIn/jwt/session callbacks below, exactly as before.
+const verificationTokenAdapter: Adapter = {
+  async createVerificationToken(token) {
+    await prisma.verificationToken.create({ data: token });
+    return token;
+  },
+  async useVerificationToken({ identifier, token }) {
+    try {
+      return await prisma.verificationToken.delete({
+        where: { identifier_token: { identifier, token } },
+      });
+    } catch {
+      return null;
+    }
+  },
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  adapter: PrismaAdapter(prisma),
+  adapter: verificationTokenAdapter,
   providers: [
     Resend({
       apiKey: process.env.AUTH_RESEND_KEY,
@@ -33,16 +52,109 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/signin",
     verifyRequest: "/signin/check-email",
   },
-  // JWT sessions even with an adapter — matches your existing flow.
   session: { strategy: "jwt" },
   callbacks: {
+    async signIn({ user }) {
+      if (!user.email) return false;
+      const userEmail = user.email;
+
+      try {
+        const existing = await prisma.user.findUnique({
+          where: { email: userEmail },
+        });
+
+        if (!existing) {
+          const username = userEmail.split("@")[0];
+          const userCount = await prisma.user.count();
+          const userNumber = userCount + 1;
+          const referralCode = `${username}${userNumber}`;
+          const reward = getSignupReward(userNumber);
+
+          const cookieStore = await cookies();
+          const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
+
+          let inviter: PrismaUser | null = null;
+          if (rawReferredBy) {
+            inviter = await prisma.user.findUnique({
+              where: { referralCode: rawReferredBy },
+            });
+
+            if (!inviter) {
+              logInvalidReferralAttempt(rawReferredBy, "inviter_not_found", userEmail);
+            } else if (inviter.email === userEmail) {
+              logInvalidReferralAttempt(rawReferredBy, "self_referral_email", userEmail);
+              inviter = null;
+            }
+          }
+
+          const referredBy = inviter?.referralCode ?? null;
+          const rewardJ = new Decimal(reward).times(1000);
+
+          const newUser = await prisma.$transaction(async (tx) => {
+            const created = await tx.user.create({
+              data: {
+                email: userEmail,
+                username,
+                userNumber,
+                referralCode,
+                referredBy,
+                joulesBalance: rewardJ,
+              },
+            });
+
+            await tx.user.update({
+              where: { id: TREASURY_USER_ID },
+              data: { joulesBalance: { decrement: rewardJ } },
+            });
+
+            const treasury = await tx.user.findUniqueOrThrow({
+              where: { id: TREASURY_USER_ID },
+              select: { joulesBalance: true },
+            });
+
+            await tx.ledgerEntry.create({
+              data: {
+                userId: TREASURY_USER_ID,
+                entryType: "GENESIS_BONUS",
+                amount: rewardJ.negated(),
+                balanceAfter: treasury.joulesBalance,
+                referenceType: "user",
+                referenceId: created.id,
+                description: `Genesis bonus outflow for user #${userNumber}`,
+              },
+            });
+
+            await tx.ledgerEntry.create({
+              data: {
+                userId: created.id,
+                entryType: "GENESIS_BONUS",
+                amount: rewardJ,
+                balanceAfter: created.joulesBalance,
+                referenceType: "user",
+                referenceId: created.id,
+                description: `Signup reward (${reward} kJ)`,
+              },
+            });
+
+            return created;
+          });
+
+          if (inviter && inviter.id !== newUser.id) {
+            await processReferralChain(inviter.referralCode, newUser.id);
+          } else if (inviter && inviter.id === newUser.id) {
+            logInvalidReferralAttempt(inviter.referralCode, "self_referral_id", newUser.email);
+          }
+        }
+      } catch (e) {
+        console.error("Auth signIn DB error:", e);
+      }
+
+      return true;
+    },
+
     async jwt({ token, user }) {
-      // `user` is only present on first sign-in after magic link click.
-      // Bootstrap the Joulegram profile here (genesis bonus, referral chain).
       if (user?.email) {
         try {
-          await bootstrapJoulegramProfile(user.email);
-
           const dbUser = await prisma.user.findUnique({
             where: { email: user.email },
           });
@@ -50,12 +162,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.userId = dbUser.id;
             token.username = dbUser.username;
             token.userNumber = dbUser.userNumber;
-            token.joulesBalance = new Decimal(
-              dbUser.joulesBalance.toString()
-            ).toNumber();
+            token.joulesBalance = new Decimal(dbUser.joulesBalance.toString()).toNumber();
           }
         } catch (e) {
-          console.error("Auth jwt bootstrap error:", e);
+          console.error("Auth jwt DB error:", e);
         }
       }
       return token;
@@ -93,102 +203,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
-// ─── Joulegram profile bootstrap ───────────────────────────────────────────
-// Creates the Joulegram-specific User row (username, userNumber, genesis
-// bonus, referral chain) the first time an email address signs in. No-op
-// if the user already exists. Called from the jwt callback.
-async function bootstrapJoulegramProfile(userEmail: string) {
-  const existing = await prisma.user.findUnique({
-    where: { email: userEmail },
-  });
-  if (existing) return;
-
-  const username = userEmail.split("@")[0];
-  const userCount = await prisma.user.count();
-  const userNumber = userCount + 1;
-  const referralCode = `${username}${userNumber}`;
-  const reward = getSignupReward(userNumber);
-
-  const cookieStore = await cookies();
-  const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
-
-  let inviter: PrismaUser | null = null;
-  if (rawReferredBy) {
-    inviter = await prisma.user.findUnique({
-      where: { referralCode: rawReferredBy },
-    });
-
-    if (!inviter) {
-      logInvalidReferralAttempt(rawReferredBy, "inviter_not_found", userEmail);
-    } else if (inviter.email === userEmail) {
-      logInvalidReferralAttempt(rawReferredBy, "self_referral_email", userEmail);
-      inviter = null;
-    }
-  }
-
-  const referredBy = inviter?.referralCode ?? null;
-  const rewardJ = new Decimal(reward).times(1000);
-
-  const newUser = await prisma.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: {
-        email: userEmail,
-        username,
-        userNumber,
-        referralCode,
-        referredBy,
-        joulesBalance: rewardJ,
-      },
-    });
-
-    await tx.user.update({
-      where: { id: TREASURY_USER_ID },
-      data: { joulesBalance: { decrement: rewardJ } },
-    });
-
-    const treasury = await tx.user.findUniqueOrThrow({
-      where: { id: TREASURY_USER_ID },
-      select: { joulesBalance: true },
-    });
-
-    await tx.ledgerEntry.create({
-      data: {
-        userId: TREASURY_USER_ID,
-        entryType: "GENESIS_BONUS",
-        amount: rewardJ.negated(),
-        balanceAfter: treasury.joulesBalance,
-        referenceType: "user",
-        referenceId: created.id,
-        description: `Genesis bonus outflow for user #${userNumber}`,
-      },
-    });
-
-    await tx.ledgerEntry.create({
-      data: {
-        userId: created.id,
-        entryType: "GENESIS_BONUS",
-        amount: rewardJ,
-        balanceAfter: created.joulesBalance,
-        referenceType: "user",
-        referenceId: created.id,
-        description: `Signup reward (${reward} kJ)`,
-      },
-    });
-
-    return created;
-  });
-
-  if (inviter && inviter.id !== newUser.id) {
-    await processReferralChain(inviter.referralCode, newUser.id);
-  } else if (inviter && inviter.id === newUser.id) {
-    logInvalidReferralAttempt(
-      inviter.referralCode,
-      "self_referral_id",
-      newUser.email
-    );
-  }
-}
-
 function logInvalidReferralAttempt(
   rawReferralCode: string,
   reason: "inviter_not_found" | "self_referral_email" | "self_referral_id",
@@ -204,9 +218,7 @@ function logInvalidReferralAttempt(
     .slice(0, 12);
 
   console.warn(
-    `[auth.referral.invalid] reason=${reason} code=${truncatedCode} hash=${codeHash}${
-      email ? ` email=${email}` : ""
-    }`
+    `[auth.referral.invalid] reason=${reason} code=${truncatedCode} hash=${codeHash}${email ? ` email=${email}` : ""}`
   );
 }
 
