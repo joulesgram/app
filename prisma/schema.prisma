@@ -53,16 +53,18 @@ enum LedgerEntryType {
 
 model User {
   id            String   @id @default(cuid())
-  username      String   @unique
+  username      String   @unique @default(cuid())
   email         String   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
   joulesBalance Decimal  @default(0) @db.Decimal(20, 4)
-  userNumber    Int      @unique
+  userNumber    Int      @unique @default(autoincrement())
   referralCode  String   @unique @default(cuid())
   referredBy    String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
 
-  // Pre-Scale Mode fields
   lastLoginBonusDate   DateTime?
   ratingsSinceLastPost Int       @default(0)
 
