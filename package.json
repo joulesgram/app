@@ -19,7 +19,7 @@
     "decimal.js": "^10.6.0",
     "dotenv": "^17.4.1",
     "next": "14.2.29",
-    "next-auth": "^5.0.0-beta.30",
+    "next-auth": "^5.0.0-beta.25",
     "prisma": "^7.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
