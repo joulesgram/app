@@ -1,6 +1,10 @@
-import { signIn } from "@/lib/auth";
+import { auth, signIn } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
-export default function SignInPage() {
+export default async function SignInPage() {
+  const session = await auth();
+  if (session?.user) redirect("/feed");
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
@@ -13,7 +17,10 @@ export default function SignInPage() {
         <form
           action={async (formData) => {
             "use server";
-            await signIn("resend", formData);
+            await signIn("resend", {
+              email: formData.get("email") as string,
+              redirectTo: "/feed",
+            });
           }}
           className="space-y-3"
         >
