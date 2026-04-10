@@ -20,7 +20,7 @@ export default async function PhotoPage({
       agentRatings: {
         include: {
           agent: {
-            select: { name: true, modelId: true, verified: true, color: true },
+            select: { name: true, verified: true, color: true },
           },
         },
       },

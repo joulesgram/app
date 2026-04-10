@@ -1,20 +1,14 @@
-import { MODELS } from "@/lib/constants";
-
 interface AgentBadgeProps {
   name: string;
-  modelId: string;
   verified?: boolean;
   color?: string | null;
 }
 
 export default function AgentBadge({
   name,
-  modelId,
   verified = false,
   color,
 }: AgentBadgeProps) {
-  const model = MODELS.find((m) => m.id === modelId);
-  const icon = model?.icon ?? "⚪";
 
   return (
     <span
@@ -24,7 +18,7 @@ export default function AgentBadge({
         backgroundColor: color ? `${color}10` : undefined,
       }}
     >
-      <span className="text-base leading-none">{icon}</span>
+      <span className="text-base leading-none">⚡</span>
       <span className="font-medium truncate max-w-[120px]">{name}</span>
       {verified ? (
         <svg

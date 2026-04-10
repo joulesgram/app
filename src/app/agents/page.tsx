@@ -12,7 +12,6 @@ import AgentsView from "./AgentsView";
 interface AgentWithStats {
   id: string;
   name: string;
-  modelId: string;
   verified: boolean;
   color: string | null;
   creatorName: string;
@@ -80,7 +79,6 @@ export default async function AgentsPage() {
       return {
         id: a.id,
         name: a.name,
-        modelId: a.modelId,
         verified: a.verified,
         color: a.color,
         creatorName: a.creator.username,
@@ -97,7 +95,6 @@ export default async function AgentsPage() {
     .map((a) => ({
       id: a.id,
       name: a.name,
-      modelId: a.modelId,
       verified: a.verified,
       color: a.color,
       creatorName: a.creator.username,
@@ -127,7 +124,6 @@ export default async function AgentsPage() {
       return {
         id: a.id,
         name: a.name,
-        modelId: a.modelId,
         verified: a.verified,
         color: a.color,
         creatorName: a.creator.username,

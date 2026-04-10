@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AgentBadge from "@/components/AgentBadge";
-import { MODELS, AGENT_CREATE_KJ } from "@/lib/constants";
+import { AGENT_CREATE_KJ } from "@/lib/constants";
 import { fmtJ } from "@/lib/joules";
 import { createAgent } from "./actions";
 
@@ -12,7 +12,6 @@ import { createAgent } from "./actions";
 interface AgentRow {
   id: string;
   name: string;
-  modelId: string;
   verified: boolean;
   color: string | null;
   creatorName: string;
@@ -65,7 +64,7 @@ export default function AgentsView({
 
   // Form state
   const [name, setName] = useState("");
-  const [modelId, setModelId] = useState("claude");
+  const modelId = "claude"; // All agents currently powered by Claude
   const [persona, setPersona] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [submitting, setSubmitting] = useState(false);
@@ -76,8 +75,8 @@ export default function AgentsView({
   const [success, setSuccess] = useState<string | null>(null);
 
   const canSuggestPersona = useMemo(
-    () => Boolean(name.trim() && modelId),
-    [name, modelId]
+    () => Boolean(name.trim()),
+    [name]
   );
 
   const handleSuggestPersona = useCallback(async () => {
@@ -107,7 +106,7 @@ export default function AgentsView({
     } finally {
       setSuggestingPersona(false);
     }
-  }, [canSuggestPersona, suggestingPersona, name, modelId]);
+  }, [canSuggestPersona, suggestingPersona, name]);
 
   const handleCreate = useCallback(async () => {
     if (!isLoggedIn) {
@@ -162,7 +161,7 @@ export default function AgentsView({
       setSubmitting(false);
       setScoring(false);
     }
-  }, [name, modelId, persona, color, isLoggedIn, router]);
+  }, [name, persona, color, isLoggedIn, router]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "best", label: "Best Agents" },
@@ -220,29 +219,6 @@ export default function AgentsView({
               className="mt-1 w-full bg-bg border border-gray-700 rounded-lg px-3 py-2.5 text-sm
                          focus:border-blue focus:outline-none transition-colors"
             />
-          </div>
-
-          {/* Model selector */}
-          <div>
-            <label className="text-xs text-gray-500 uppercase tracking-wider">
-              Model
-            </label>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setModelId(m.id)}
-                  className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${
-                    modelId === m.id
-                      ? "border-blue text-blue bg-blue/10"
-                      : "border-gray-700 text-gray-400 hover:border-gray-500"
-                  }`}
-                >
-                  <span>{m.icon}</span>
-                  <span>{m.label}</span>
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Persona */}
@@ -314,7 +290,6 @@ export default function AgentsView({
               <div className="mt-1">
                 <AgentBadge
                   name={name}
-                  modelId={modelId}
                   verified={false}
                   color={color}
                 />
@@ -396,7 +371,6 @@ export default function AgentsView({
                   <div className="flex-1 min-w-0">
                     <AgentBadge
                       name={a.name}
-                      modelId={a.modelId}
                       verified={a.verified}
                       color={a.color}
                     />
@@ -435,7 +409,6 @@ export default function AgentsView({
                   <div className="flex-1 min-w-0">
                     <AgentBadge
                       name={a.name}
-                      modelId={a.modelId}
                       verified={a.verified}
                       color={a.color}
                     />
@@ -471,7 +444,6 @@ export default function AgentsView({
                   <div className="flex-1 min-w-0">
                     <AgentBadge
                       name={a.name}
-                      modelId={a.modelId}
                       verified={a.verified}
                       color={a.color}
                     />

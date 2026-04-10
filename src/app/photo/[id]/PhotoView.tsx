@@ -13,7 +13,6 @@ interface AgentRatingData {
   critique: string | null;
   agent: {
     name: string;
-    modelId: string;
     verified: boolean;
     color: string | null;
   };
@@ -245,7 +244,6 @@ export default function PhotoView({
                   <div key={i} className="flex items-center justify-between gap-3">
                     <AgentBadge
                       name={ar.agent.name}
-                      modelId={ar.agent.modelId}
                       verified={ar.agent.verified}
                       color={ar.agent.color}
                     />
