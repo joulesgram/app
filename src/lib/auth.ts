@@ -20,9 +20,12 @@ declare module "next-auth" {
   }
 }
 
-// Minimal adapter: only implements the two methods the email provider needs.
-// Everything else (user creation, sessions) is handled by your existing
-// signIn/jwt/session callbacks below, exactly as before.
+// Custom adapter implementing the methods Auth.js v5 email provider requires.
+// The adapter creates a placeholder User row on first sign-in (with schema
+// defaults filling in username/userNumber/referralCode). The signIn callback
+// below then overwrites those placeholders with real values and runs the
+// Joulegram-specific bootstrap (genesis bonus + referral chain), guarded by
+// the `bootstrapped` flag so it only runs once per user.
 const verificationTokenAdapter: Adapter = {
   async createVerificationToken(token) {
     await prisma.verificationToken.create({ data: token });
@@ -36,6 +39,52 @@ const verificationTokenAdapter: Adapter = {
     } catch {
       return null;
     }
+  },
+  async getUserByEmail(email) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return null;
+    return {
+      id: user.id,
+      email: user.email,
+      emailVerified: user.emailVerified ?? null,
+      name: user.name ?? null,
+      image: user.image ?? null,
+    };
+  },
+  async createUser(user) {
+    const created = await prisma.user.create({
+      data: {
+        email: user.email,
+        emailVerified: user.emailVerified,
+        name: user.name,
+        image: user.image,
+      },
+    });
+    return {
+      id: created.id,
+      email: created.email,
+      emailVerified: created.emailVerified ?? null,
+      name: created.name ?? null,
+      image: created.image ?? null,
+    };
+  },
+  async updateUser(user) {
+    const updated = await prisma.user.update({
+      where: { id: user.id! },
+      data: {
+        email: user.email,
+        emailVerified: user.emailVerified,
+        name: user.name,
+        image: user.image,
+      },
+    });
+    return {
+      id: updated.id,
+      email: updated.email,
+      emailVerified: updated.emailVerified ?? null,
+      name: updated.name ?? null,
+      image: updated.image ?? null,
+    };
   },
 };
 
@@ -63,13 +112,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email: userEmail },
         });
 
-        if (!existing) {
+        // Run Joulegram bootstrap only once, after the adapter has created
+        // the placeholder row. Guarded by the `bootstrapped` flag.
+        if (existing && !existing.bootstrapped) {
           const username = userEmail.split("@")[0];
-          const userCount = await prisma.user.count();
+          const userCount = await prisma.user.count({
+            where: { bootstrapped: true },
+          });
           const userNumber = userCount + 1;
           const referralCode = `${username}${userNumber}`;
           const reward = getSignupReward(userNumber);
 
+          // Read referral cookie set by middleware from ?ref= query param
           const cookieStore = await cookies();
           const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
 
@@ -88,20 +142,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
 
           const referredBy = inviter?.referralCode ?? null;
+
+          // Reward is in kJ from getSignupReward; convert to joules for storage
           const rewardJ = new Decimal(reward).times(1000);
 
           const newUser = await prisma.$transaction(async (tx) => {
-            const created = await tx.user.create({
+            // Overwrite the adapter-created placeholder row with real values
+            const updated = await tx.user.update({
+              where: { id: existing.id },
               data: {
-                email: userEmail,
                 username,
                 userNumber,
                 referralCode,
                 referredBy,
                 joulesBalance: rewardJ,
+                bootstrapped: true,
               },
             });
 
+            // Debit treasury, credit new user
             await tx.user.update({
               where: { id: TREASURY_USER_ID },
               data: { joulesBalance: { decrement: rewardJ } },
@@ -119,26 +178,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 amount: rewardJ.negated(),
                 balanceAfter: treasury.joulesBalance,
                 referenceType: "user",
-                referenceId: created.id,
+                referenceId: updated.id,
                 description: `Genesis bonus outflow for user #${userNumber}`,
               },
             });
 
             await tx.ledgerEntry.create({
               data: {
-                userId: created.id,
+                userId: updated.id,
                 entryType: "GENESIS_BONUS",
                 amount: rewardJ,
-                balanceAfter: created.joulesBalance,
+                balanceAfter: updated.joulesBalance,
                 referenceType: "user",
-                referenceId: created.id,
+                referenceId: updated.id,
                 description: `Signup reward (${reward} kJ)`,
               },
             });
 
-            return created;
+            return updated;
           });
 
+          // Walk the referral ancestor chain
           if (inviter && inviter.id !== newUser.id) {
             await processReferralChain(inviter.referralCode, newUser.id);
           } else if (inviter && inviter.id === newUser.id) {
@@ -177,6 +237,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.username = token.username as string;
         session.user.userNumber = token.userNumber as number;
 
+        // Grant daily login bonus if Pre-Scale Mode is active
         try {
           const preScaleActive = await isPreScaleModeEnabled(prisma);
           if (preScaleActive) {
@@ -186,6 +247,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           console.error("Daily login bonus error:", e);
         }
 
+        // Always fetch fresh balance from DB (not the stale JWT value)
         try {
           const freshUser = await prisma.user.findUnique({
             where: { id: token.userId as string },
