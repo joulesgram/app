@@ -17,7 +17,9 @@ export function getTierLabel(n: number): string {
   return tier?.label ?? SIGNUP_TIERS[SIGNUP_TIERS.length - 1].label;
 }
 
-/** Reward multiplier for referral chain depth */
+/** Reward multiplier for referral chain depth.
+ *  Level 1 (direct invite) = 1.0, Level 2 = 0.5, Level 3 = 0.25, etc. */
 export function chainReward(level: number): number {
-  return Math.max(0, 1 / Math.pow(2, level));
+  if (level < 1) return 0;
+  return 1 / Math.pow(2, level - 1);
 }

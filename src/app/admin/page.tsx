@@ -84,7 +84,7 @@ export default async function AdminPage() {
       }),
       prisma.bootstrapPool.findUnique({
         where: { poolId: BOOTSTRAP_POOL_ID },
-        select: { remainingKj: true },
+        select: { remainingJ: true },
       }),
       prisma.user.count({ where: { id: { not: TREASURY_USER_ID } } }),
     ]);
@@ -228,7 +228,7 @@ export default async function AdminPage() {
               </p>
               <p className="mt-2 font-mono text-2xl text-blue">
                 {bootstrapPool
-                  ? `${bootstrapPool.remainingKj.toLocaleString()} kJ`
+                  ? `${(Number(bootstrapPool.remainingJ) / 1000).toLocaleString()} kJ`
                   : "—"}
               </p>
               <p className="text-[11px] text-gray-600 mt-1">

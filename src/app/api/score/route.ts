@@ -144,7 +144,7 @@ Respond ONLY with valid JSON matching this exact schema:
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: [
         {
           role: "user",
@@ -187,6 +187,30 @@ Respond ONLY with valid JSON matching this exact schema:
 
     console.log(`[Score] Parsed response: aiScore=${parsed.score ?? "N/A"}, category=${parsed.category}, agents=${parsed.agent_scores?.length ?? 0}, nsfw=${parsed.nsfw}`);
 
+    // Validation gate 1: check parse quality before any DB writes.
+    // At least half of expected agents must have structurally valid scores.
+    if (agents.length > 0) {
+      const validEntries = (parsed.agent_scores ?? []).filter(
+        (s) =>
+          typeof s.agent_name === "string" && s.agent_name.length > 0 &&
+          typeof s.score === "number" && s.score >= RATING_SCALE.min && s.score <= RATING_SCALE.max &&
+          typeof s.critique === "string" && s.critique.length > 0
+      );
+
+      const minRequired = Math.ceil(agents.length / 2);
+      if (validEntries.length < minRequired) {
+        console.error(`[Score] AI response incomplete: ${validEntries.length}/${agents.length} valid agent scores (need ${minRequired})`);
+        return NextResponse.json(
+          { error: "AI response was incomplete or malformed, please try again" },
+          { status: 502 }
+        );
+      }
+
+      if (validEntries.length < (parsed.agent_scores?.length ?? 0)) {
+        console.warn(`[Score] Partial AI response: ${validEntries.length}/${parsed.agent_scores.length} entries valid, proceeding with valid subset`);
+      }
+    }
+
     // Compute energy cost in joules
     const inputTokens = response.usage.input_tokens;
     const outputTokens = response.usage.output_tokens;
@@ -219,6 +243,20 @@ Respond ONLY with valid JSON matching this exact schema:
       }
     }
 
+    // Validation gate 2: enough matched agents to justify charging the user.
+    // Catches the case where AI returns valid-looking scores but agent names
+    // don't match any DB records (malformed persona, model hallucination).
+    if (agents.length > 0) {
+      const minRequired = Math.ceil(agents.length / 2);
+      if (agentScores.length < minRequired) {
+        console.error(`[Score] Too few agent scores matched DB agents: ${agentScores.length}/${agents.length} (need ${minRequired})`);
+        return NextResponse.json(
+          { error: "AI response was incomplete or malformed, please try again" },
+          { status: 502 }
+        );
+      }
+    }
+
     // Average AI score across agents, or use direct score if no agents
     let aiScore: number | null;
     if (agentScores.length > 0) {
@@ -241,19 +279,6 @@ Respond ONLY with valid JSON matching this exact schema:
     const perAgentJoules =
       agentScores.length > 0 ? computeJoules / agentScores.length : 0;
 
-    // Save agent ratings
-    for (const as_ of agentScores) {
-      await prisma.agentRating.create({
-        data: {
-          photoId,
-          agentId: as_.agentId,
-          score: as_.score,
-          critique: as_.critique,
-          computeJoules: perAgentJoules,
-        },
-      });
-    }
-
     // Validate and store category
     const detectedCategory = VALID_CATEGORIES.includes(
       parsed.category?.toLowerCase() as typeof VALID_CATEGORIES[number]
@@ -264,21 +289,9 @@ Respond ONLY with valid JSON matching this exact schema:
     // Determine if published (meets threshold)
     const published = aiScore !== null && aiScore >= PUBLISH_THRESHOLD;
 
-    // Update photo with AI score, critique, compute cost, NSFW flag, and category
-    await prisma.photo.update({
-      where: { id: photoId },
-      data: {
-        aiScore,
-        critique: parsed.overall_critique,
-        computeKJ,
-        nsfw: parsed.nsfw,
-        category: detectedCategory,
-      },
-    });
-
-    console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
-
-    // Deduct scoring cost and credit upload reward atomically
+    // All DB mutations inside one transaction. The Anthropic API call and
+    // response validation are done above so we only enter the transaction
+    // with known-good data, keeping it short.
     const scoreCostJ = new Decimal(PHOTO_SCORE_KJ).times(1000);
     const uploadRewardJ = new Decimal(5).times(1000); // 5 kJ
 
@@ -386,7 +399,33 @@ Respond ONLY with valid JSON matching this exact schema:
         });
       }
 
-      // 2. Credit upload reward (both paths)
+      // 2. Create AgentRating rows and update photo (inside tx for atomicity)
+      for (const as_ of agentScores) {
+        await tx.agentRating.create({
+          data: {
+            photoId,
+            agentId: as_.agentId,
+            score: as_.score,
+            critique: as_.critique,
+            computeJoules: perAgentJoules,
+          },
+        });
+      }
+
+      await tx.photo.update({
+        where: { id: photoId },
+        data: {
+          aiScore,
+          critique: parsed.overall_critique,
+          computeKJ,
+          nsfw: parsed.nsfw,
+          category: detectedCategory,
+        },
+      });
+
+      console.log(`[Score] Saved photo ${photoId}: aiScore=${aiScore}, category=${detectedCategory}, agentRatings=${agentScores.length}`);
+
+      // 3. Credit upload reward (both paths)
       await tx.user.update({
         where: { id: userId },
         data: { joulesBalance: { increment: uploadRewardJ } },

@@ -38,16 +38,16 @@ export async function transferFromBootstrapPool(
   entryType: "REGEN_DRIP" | "DAILY_LOGIN_BONUS" | "RATE_EARN_FLAT" | "PRE_SCALE_POST_GRANT",
   description?: string
 ): Promise<boolean> {
-  const amountKj = amountJ.div(1000);
+  const amountJBigInt = BigInt(amountJ.toFixed(0));
 
-  // Atomic CAS on pool remaining balance
+  // Atomic CAS on pool remaining balance (in joules — no rounding needed)
   const updated = await tx.bootstrapPool.updateMany({
     where: {
       poolId: PRE_SCALE.BOOTSTRAP_POOL_ID,
       closedAt: null,
-      remainingKj: { gte: BigInt(amountKj.toFixed(0)) },
+      remainingJ: { gte: amountJBigInt },
     },
-    data: { remainingKj: { decrement: BigInt(amountKj.toFixed(0)) } },
+    data: { remainingJ: { decrement: amountJBigInt } },
   });
 
   if (updated.count === 0) return false;

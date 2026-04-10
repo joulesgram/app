@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable icon: safe zone is inner 80% (51.2px padding each side) -->
+  <rect width="512" height="512" fill="#050810"/>
+  <!-- Centered bolt with extra padding for maskable safe zone -->
+  <polygon points="288,72 176,240 228,240 152,440 352,256 284,256 368,72" fill="#ff8a00"/>
+</svg>

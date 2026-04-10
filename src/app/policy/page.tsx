@@ -4,12 +4,13 @@ import {
   GENESIS_KJ,
   PHOTO_SCORE_KJ,
   RATING_KJ,
+  REFERRAL_BASE_KJ,
   SIGNUP_TIERS,
   UPLOAD_REWARD_KJ,
 } from "@/lib/constants";
 import { chainReward, fmtJ } from "@/lib/joules";
 
-const REFERRAL_LEVELS = [0, 1, 2, 3, 4, 5] as const;
+const REFERRAL_LEVELS = [1, 2, 3, 4, 5] as const;
 const UPLOAD_NET_KJ = PHOTO_SCORE_KJ - UPLOAD_REWARD_KJ;
 
 export default function PolicyPage() {
@@ -89,14 +90,14 @@ export default function PolicyPage() {
         <section className="bg-[#0a0f1a] border border-gray-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-2xl font-semibold">Referral chain reward decay</h2>
           <p className="text-sm text-gray-300 leading-relaxed">
-            Referral rewards decay by depth using <code>chainReward(level)</code>, currently
-            <code className="ml-1">max(0, 1 / 2^level)</code>.
+            Referral rewards start at <code>{REFERRAL_BASE_KJ} kJ</code> for a direct invite and halve
+            at each chain level: <code className="ml-1">REFERRAL_BASE_KJ / 2^(level−1)</code>.
           </p>
           <ul className="grid sm:grid-cols-2 gap-2 text-sm">
             {REFERRAL_LEVELS.map((level) => (
               <li key={level} className="rounded-lg border border-gray-800 bg-[#050810] px-3 py-2">
                 <span className="text-gray-400">Level {level}: </span>
-                <span className="font-mono text-[#00d4ff]">{chainReward(level).toFixed(4)}x</span>
+                <span className="font-mono text-[#00d4ff]">{fmtJ(REFERRAL_BASE_KJ * chainReward(level))}</span>
               </li>
             ))}
           </ul>

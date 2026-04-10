@@ -53,16 +53,19 @@ enum LedgerEntryType {
 
 model User {
   id            String   @id @default(cuid())
-  username      String   @unique
+  username      String   @unique @default(cuid())
   email         String   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
   joulesBalance Decimal  @default(0) @db.Decimal(20, 4)
-  userNumber    Int      @unique
+  userNumber    Int      @unique @default(autoincrement())
   referralCode  String   @unique @default(cuid())
   referredBy    String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
+  bootstrapped  Boolean  @default(false)
 
-  // Pre-Scale Mode fields
   lastLoginBonusDate   DateTime?
   ratingsSinceLastPost Int       @default(0)
 
@@ -150,8 +153,8 @@ model LedgerEntry {
 
 model BootstrapPool {
   poolId        String    @id
-  totalMintedKj BigInt
-  remainingKj   BigInt
+  totalMintedJ BigInt
+  remainingJ   BigInt
   createdAt     DateTime  @default(now())
   closedAt      DateTime?
 }
@@ -185,4 +188,14 @@ model AdminAction {
 
   @@index([createdAt])
   @@index([operatorId])
+}
+// ─── Auth.js email provider ──────────────────────────────────────────────
+// Required by the Resend (email) provider to store hashed magic-link tokens.
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_token")
 }
