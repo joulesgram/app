@@ -1,12 +1,14 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = "joulegram-v1";
+// Bumped from v1 so the activate handler actually clears out the old cache,
+// which contained stale HTML navigation responses (including user-specific
+// /feed and /photo HTML, plus any 4xx/5xx that v1 happily stored).
+const CACHE_NAME = "joulegram-v2";
 
-// Static assets to pre-cache on install
-const PRECACHE_URLS = ["/", "/manifest.json"];
-
-// Routes that must NEVER be cached
-const EXCLUDED_PATTERNS = [/^\/api\//, /^\/admin/];
+// Only precache the manifest. Precaching "/" in v1 baked a stale home page
+// into the cache on install, which could then be served after a deploy with
+// references to chunk hashes that no longer exist.
+const PRECACHE_URLS = ["/manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -17,7 +19,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  // Clean up old caches
+  // Clean up old caches (including joulegram-v1 on upgrade)
   event.waitUntil(
     caches
       .keys()
@@ -33,54 +35,62 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
+  const request = event.request;
 
   // Skip non-GET requests
-  if (event.request.method !== "GET") return;
+  if (request.method !== "GET") return;
 
-  // Skip cross-origin requests
+  const url = new URL(request.url);
+
+  // Skip cross-origin requests (user photos on a CDN, Google Fonts, etc.)
   if (url.origin !== self.location.origin) return;
 
-  // Never cache /api or /admin routes
-  if (EXCLUDED_PATTERNS.some((pattern) => pattern.test(url.pathname))) return;
+  // Never intercept HTML page navigations. v1 cached every navigation
+  // response, which meant a single bad response (5xx, auth redirect,
+  // stale HTML pointing at chunk hashes that no longer exist) could
+  // get pinned in the cache and served to the user later. For a
+  // dynamic, auth-gated app like Joulegram the browser's own navigation
+  // handling is strictly safer.
+  if (request.mode === "navigate") return;
 
-  // Network-first strategy for HTML navigation requests
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
+  // Skip API routes, admin, and Next.js RSC payloads. RSC payloads are
+  // fetched at the same URL as the page but with an RSC header or a
+  // ?_rsc= query param, so we check both.
+  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/admin")) return;
+  if (request.headers.get("RSC") === "1") return;
+  if (url.searchParams.has("_rsc")) return;
+
+  // Cache-first for immutable assets: Next.js content-hashed bundles
+  // and the PWA icon set. Hashed /_next/static/* URLs are safe by
+  // construction (new hash = new URL). /icons/* only changes on deploy,
+  // and a stale icon isn't a correctness issue.
+  const isHashedNextAsset = url.pathname.startsWith("/_next/static/");
+  const isPwaIcon = url.pathname.startsWith("/icons/");
+  if (!isHashedNextAsset && !isPwaIcon) return;
+
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        // Only cache successful, same-origin, full responses. v1 would
+        // happily cache a 500 and keep returning it forever.
+        if (
+          response &&
+          response.ok &&
+          response.status === 200 &&
+          response.type === "basic"
+        ) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // Cache-first strategy for static assets (JS, CSS, images, fonts)
-  if (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname.endsWith(".css") ||
-    url.pathname.endsWith(".js") ||
-    url.pathname.endsWith(".woff2") ||
-    url.pathname.endsWith(".png") ||
-    url.pathname.endsWith(".svg") ||
-    url.pathname.endsWith(".jpg") ||
-    url.pathname.endsWith(".webp")
-  ) {
-    event.respondWith(
-      caches.match(event.request).then(
-        (cached) =>
-          cached ||
-          fetch(event.request).then((response) => {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            return response;
-          })
-      )
-    );
-    return;
-  }
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => cache.put(request, clone))
+            .catch(() => {
+              // Cache writes are best-effort; swallow quota errors.
+            });
+        }
+        return response;
+      });
+    })
+  );
 });

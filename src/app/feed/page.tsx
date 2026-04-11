@@ -40,27 +40,31 @@ export default async function FeedPage() {
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
 
+  // One aggregate query for all photo averages. Previously this was N+1,
+  // which made the feed page multi-second to render and made clicking the
+  // Feed bottom-nav item feel like a dead click while the RSC payload loaded.
+  const photoIds = sortedPhotos.map((p) => p.id);
+  const humanAvgRows =
+    photoIds.length === 0
+      ? []
+      : await prisma.humanRating.groupBy({
+          by: ["photoId"],
+          where: { photoId: { in: photoIds } },
+          _avg: { score: true },
+        });
+  const humanAvgByPhotoId = new Map(
+    humanAvgRows.map((row) => [row.photoId, row._avg.score])
+  );
+
   const feed = sortedPhotos.map((p) => ({
     id: p.id,
     imageUrl: p.imageUrl,
     username: p.user.username,
     aiScore: p.aiScore,
+    humanScore: humanAvgByPhotoId.get(p.id) ?? null,
     isOwner: p.userId === userId,
     hasRated: p.humanRatings.length > 0,
   }));
-
-  // Compute human score averages in parallel
-  const humanScores = await Promise.all(
-    sortedPhotos.map((p) =>
-      prisma.humanRating
-        .findMany({ where: { photoId: p.id }, select: { score: true } })
-        .then((rs) =>
-          rs.length > 0
-            ? rs.reduce((s, r) => s + r.score, 0) / rs.length
-            : null
-        )
-    )
-  );
 
   return (
     <main className="min-h-screen pb-20">
@@ -105,13 +109,13 @@ export default async function FeedPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {feed.map((photo, i) => (
+            {feed.map((photo) => (
               <Link key={photo.id} href={`/photo/${photo.id}`}>
                 <PhotoCard
                   imageUrl={photo.imageUrl}
                   username={photo.username}
                   aiScore={photo.aiScore}
-                  humanScore={humanScores[i]}
+                  humanScore={photo.humanScore}
                   isOwner={photo.isOwner}
                   hasRated={photo.hasRated}
                 />
