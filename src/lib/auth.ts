@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import NextAuth, { type DefaultSession } from "next-auth";
 import Resend from "next-auth/providers/resend";
 import type { Adapter } from "next-auth/adapters";
@@ -21,11 +21,21 @@ declare module "next-auth" {
 }
 
 // Custom adapter implementing the methods Auth.js v5 email provider requires.
-// The adapter creates a placeholder User row on first sign-in (with schema
-// defaults filling in username/userNumber/referralCode). The signIn callback
-// below then overwrites those placeholders with real values and runs the
+// The adapter creates a placeholder User row on first sign-in with explicit
+// placeholder values for every NOT NULL column. The signIn callback below
+// then overwrites username/referralCode with real values and runs the
 // Joulegram-specific bootstrap (genesis bonus + referral chain), guarded by
-// the `bootstrapped` flag so it only runs once per user.
+// the `bootstrapped` flag so it only runs once per user. userNumber is
+// assigned atomically here under an advisory lock and never rewritten.
+//
+// Why placeholders instead of schema defaults: the init migration declared
+// id/username/referralCode with @default(cuid()) and userNumber with
+// @default(autoincrement()) in the Prisma schema, but the generated DDL
+// left these columns as NOT NULL with no DB-level default and no sequence.
+// This was never caught because early users were created via the legacy
+// GitHub OAuth flow (custom code, explicit values), not through this
+// adapter. The email magic-link flow runs this code path for the first
+// time, so we fill in every required field ourselves.
 const verificationTokenAdapter: Adapter = {
   async createVerificationToken(token) {
     await prisma.verificationToken.create({ data: token });
@@ -52,14 +62,45 @@ const verificationTokenAdapter: Adapter = {
     };
   },
   async createUser(user) {
-    const created = await prisma.user.create({
-      data: {
-        email: user.email,
-        emailVerified: user.emailVerified,
-        name: user.name,
-        image: user.image,
-      },
+    if (!user.email) {
+      throw new Error("createUser requires an email");
+    }
+    const email = user.email;
+    const emailVerified = user.emailVerified ?? null;
+    const name = user.name ?? null;
+    const image = user.image ?? null;
+
+    const created = await prisma.$transaction(async (tx) => {
+      // Serialize user creation with a transaction-scoped advisory lock so
+      // two concurrent signups cannot read the same MAX("userNumber") and
+      // both try to claim the same value. Lock is auto-released on commit.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('joulegram.user_create')::bigint)`;
+
+      // MAX+1 is safe because the treasury system user is userNumber=0
+      // and every real user has userNumber >= 1.
+      const rows = await tx.$queryRaw<Array<{ next_number: number }>>`
+        SELECT COALESCE(MAX("userNumber"), 0) + 1 AS next_number FROM "User"
+      `;
+      const nextUserNumber = Number(rows[0].next_number);
+
+      // Placeholder values unique by UUID. signIn overwrites username and
+      // referralCode with the human-readable form once it computes them.
+      const placeholder = `pending_${randomUUID()}`;
+
+      return tx.user.create({
+        data: {
+          id: placeholder,
+          username: placeholder,
+          email,
+          emailVerified,
+          name,
+          image,
+          userNumber: nextUserNumber,
+          referralCode: placeholder,
+        },
+      });
     });
+
     return {
       id: created.id,
       email: created.email,
@@ -116,10 +157,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // the placeholder row. Guarded by the `bootstrapped` flag.
         if (existing && !existing.bootstrapped) {
           const username = userEmail.split("@")[0];
-          const userCount = await prisma.user.count({
-            where: { bootstrapped: true },
-          });
-          const userNumber = userCount + 1;
+          // userNumber was assigned atomically by the adapter's createUser
+          // under an advisory lock. Reuse it here instead of recomputing
+          // from count(bootstrapped) — count-based recomputation races with
+          // parallel signups (two signIns reading the same count and both
+          // trying to UPDATE to the same userNumber, violating the unique
+          // constraint).
+          const userNumber = existing.userNumber;
           const referralCode = `${username}${userNumber}`;
           const reward = getSignupReward(userNumber);
 
@@ -147,12 +191,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const rewardJ = new Decimal(reward).times(1000);
 
           const newUser = await prisma.$transaction(async (tx) => {
-            // Overwrite the adapter-created placeholder row with real values
+            // Overwrite the adapter-created placeholder username/referralCode
+            // with real values. userNumber is intentionally not written —
+            // it was assigned in createUser and must remain stable.
             const updated = await tx.user.update({
               where: { id: existing.id },
               data: {
                 username,
-                userNumber,
                 referralCode,
                 referredBy,
                 joulesBalance: rewardJ,
