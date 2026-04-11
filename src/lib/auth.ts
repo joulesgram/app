@@ -21,21 +21,31 @@ declare module "next-auth" {
 }
 
 // Custom adapter implementing the methods Auth.js v5 email provider requires.
-// The adapter creates a placeholder User row on first sign-in with explicit
-// placeholder values for every NOT NULL column. The signIn callback below
-// then overwrites username/referralCode with real values and runs the
-// Joulegram-specific bootstrap (genesis bonus + referral chain), guarded by
-// the `bootstrapped` flag so it only runs once per user. userNumber is
-// assigned atomically here under an advisory lock and never rewritten.
 //
-// Why placeholders instead of schema defaults: the init migration declared
+// createUser runs the full Joulegram bootstrap in a single advisory-locked
+// transaction: it computes a monotonic userNumber, derives a human-readable
+// username and referralCode, grants the signup reward, debits the treasury,
+// writes both ledger entries, and commits everything atomically. The
+// referral ancestor chain is walked after the main transaction (each
+// ancestor credit is its own transaction, matching the old behavior).
+//
+// Why the bootstrap lives here and not in the signIn callback: in the email
+// callback flow Auth.js calls the signIn callback BEFORE createUser (see
+// @auth/core/lib/actions/callback/index.js handleAuthorized → then
+// handleLoginOrRegister). For a brand-new user, `existing` is null both
+// times signIn fires, so a bootstrap guarded by `!existing.bootstrapped`
+// never runs on a first-time signup — the user ends up with a placeholder
+// username and zero joules. Running bootstrap in createUser, where we
+// already hold a write lock and know the user does not yet exist, is both
+// simpler and correct for first-timers.
+//
+// Why every column is set explicitly: the init migration declared
 // id/username/referralCode with @default(cuid()) and userNumber with
 // @default(autoincrement()) in the Prisma schema, but the generated DDL
 // left these columns as NOT NULL with no DB-level default and no sequence.
 // This was never caught because early users were created via the legacy
 // GitHub OAuth flow (custom code, explicit values), not through this
-// adapter. The email magic-link flow runs this code path for the first
-// time, so we fill in every required field ourselves.
+// adapter. Every column we care about is supplied from the application.
 const verificationTokenAdapter: Adapter = {
   async createVerificationToken(token) {
     await prisma.verificationToken.create({ data: token });
@@ -65,15 +75,40 @@ const verificationTokenAdapter: Adapter = {
     if (!user.email) {
       throw new Error("createUser requires an email");
     }
-    const email = user.email;
-    const emailVerified = user.emailVerified ?? null;
+    const userEmail = user.email;
+    const emailVerified = user.emailVerified ?? new Date();
     const name = user.name ?? null;
     const image = user.image ?? null;
 
+    // Read the referral cookie set by middleware from ?ref=. cookies() is
+    // request-scoped and works inside the adapter because createUser runs
+    // within the Next.js API route handler for /api/auth/callback/resend.
+    const cookieStore = await cookies();
+    const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
+
+    // Inviter lookup outside the main tx — preserves the old behavior and
+    // keeps the locked section short. The inviter row is stable (no
+    // cascade/delete on User in prod), so reading it outside the tx is
+    // safe.
+    let inviter: PrismaUser | null = null;
+    if (rawReferredBy) {
+      inviter = await prisma.user.findUnique({
+        where: { referralCode: rawReferredBy },
+      });
+      if (!inviter) {
+        logInvalidReferralAttempt(rawReferredBy, "inviter_not_found", userEmail);
+      } else if (inviter.email === userEmail) {
+        logInvalidReferralAttempt(rawReferredBy, "self_referral_email", userEmail);
+        inviter = null;
+      }
+    }
+    const referredBy = inviter?.referralCode ?? null;
+
     const created = await prisma.$transaction(async (tx) => {
       // Serialize user creation with a transaction-scoped advisory lock so
-      // two concurrent signups cannot read the same MAX("userNumber") and
-      // both try to claim the same value. Lock is auto-released on commit.
+      // two concurrent signups cannot read the same MAX("userNumber") or
+      // the same `baseUsername` availability check. Lock is auto-released
+      // on commit.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('joulegram.user_create')::bigint)`;
 
       // MAX+1 is safe because the treasury system user is userNumber=0
@@ -81,25 +116,93 @@ const verificationTokenAdapter: Adapter = {
       const rows = await tx.$queryRaw<Array<{ next_number: number }>>`
         SELECT COALESCE(MAX("userNumber"), 0) + 1 AS next_number FROM "User"
       `;
-      const nextUserNumber = Number(rows[0].next_number);
+      const userNumber = Number(rows[0].next_number);
 
-      // Placeholder values unique by UUID. signIn overwrites username and
-      // referralCode with the human-readable form once it computes them.
-      const placeholder = `pending_${randomUUID()}`;
+      // Base username is the email local part. If another user already
+      // owns it (e.g. two users with "john@a.com" and "john@b.com"), fall
+      // back to "john<userNumber>" which is guaranteed unique by the lock.
+      const baseUsername = userEmail.split("@")[0];
+      const baseTaken = await tx.user.findUnique({
+        where: { username: baseUsername },
+        select: { id: true },
+      });
+      const username = baseTaken ? `${baseUsername}${userNumber}` : baseUsername;
 
-      return tx.user.create({
+      // referralCode always uses the base form + userNumber — userNumber
+      // is unique so this is unique by construction, even if base is taken.
+      const referralCode = `${baseUsername}${userNumber}`;
+
+      // Reward is in kJ from getSignupReward; convert to joules for storage.
+      const reward = getSignupReward(userNumber);
+      const rewardJ = new Decimal(reward).times(1000);
+
+      // Insert the User row with all real values and bootstrapped=true in
+      // one shot — no placeholder phase, no follow-up UPDATE.
+      const row = await tx.user.create({
         data: {
-          id: placeholder,
-          username: placeholder,
-          email,
+          id: randomUUID(),
+          username,
+          email: userEmail,
           emailVerified,
           name,
           image,
-          userNumber: nextUserNumber,
-          referralCode: placeholder,
+          userNumber,
+          referralCode,
+          referredBy,
+          joulesBalance: rewardJ,
+          bootstrapped: true,
         },
       });
+
+      // Debit treasury and write the paired ledger entries. Every credit
+      // to a real user must have a matching treasury debit to preserve
+      // integrity rule #3 (SUM(LedgerEntry.amount) = SUM(joulesBalance)).
+      await tx.user.update({
+        where: { id: TREASURY_USER_ID },
+        data: { joulesBalance: { decrement: rewardJ } },
+      });
+      const treasury = await tx.user.findUniqueOrThrow({
+        where: { id: TREASURY_USER_ID },
+        select: { joulesBalance: true },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          userId: TREASURY_USER_ID,
+          entryType: "GENESIS_BONUS",
+          amount: rewardJ.negated(),
+          balanceAfter: treasury.joulesBalance,
+          referenceType: "user",
+          referenceId: row.id,
+          description: `Genesis bonus outflow for user #${userNumber}`,
+        },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          userId: row.id,
+          entryType: "GENESIS_BONUS",
+          amount: rewardJ,
+          balanceAfter: row.joulesBalance,
+          referenceType: "user",
+          referenceId: row.id,
+          description: `Signup reward (${reward} kJ)`,
+        },
+      });
+
+      return row;
     });
+
+    // Walk the referral ancestor chain outside the main tx. Matches the
+    // pre-existing behavior: each ancestor credit gets its own transaction.
+    if (inviter && inviter.id !== created.id) {
+      try {
+        await processReferralChain(inviter.referralCode, created.id);
+      } catch (e) {
+        // Don't block user creation on referral-chain bookkeeping failures.
+        console.error("Auth referral chain error:", e);
+      }
+    }
 
     return {
       id: created.id,
@@ -145,116 +248,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   callbacks: {
     async signIn({ user }) {
-      if (!user.email) return false;
-      const userEmail = user.email;
-
-      try {
-        const existing = await prisma.user.findUnique({
-          where: { email: userEmail },
-        });
-
-        // Run Joulegram bootstrap only once, after the adapter has created
-        // the placeholder row. Guarded by the `bootstrapped` flag.
-        if (existing && !existing.bootstrapped) {
-          const username = userEmail.split("@")[0];
-          // userNumber was assigned atomically by the adapter's createUser
-          // under an advisory lock. Reuse it here instead of recomputing
-          // from count(bootstrapped) — count-based recomputation races with
-          // parallel signups (two signIns reading the same count and both
-          // trying to UPDATE to the same userNumber, violating the unique
-          // constraint).
-          const userNumber = existing.userNumber;
-          const referralCode = `${username}${userNumber}`;
-          const reward = getSignupReward(userNumber);
-
-          // Read referral cookie set by middleware from ?ref= query param
-          const cookieStore = await cookies();
-          const rawReferredBy = cookieStore.get("referral_code")?.value ?? null;
-
-          let inviter: PrismaUser | null = null;
-          if (rawReferredBy) {
-            inviter = await prisma.user.findUnique({
-              where: { referralCode: rawReferredBy },
-            });
-
-            if (!inviter) {
-              logInvalidReferralAttempt(rawReferredBy, "inviter_not_found", userEmail);
-            } else if (inviter.email === userEmail) {
-              logInvalidReferralAttempt(rawReferredBy, "self_referral_email", userEmail);
-              inviter = null;
-            }
-          }
-
-          const referredBy = inviter?.referralCode ?? null;
-
-          // Reward is in kJ from getSignupReward; convert to joules for storage
-          const rewardJ = new Decimal(reward).times(1000);
-
-          const newUser = await prisma.$transaction(async (tx) => {
-            // Overwrite the adapter-created placeholder username/referralCode
-            // with real values. userNumber is intentionally not written —
-            // it was assigned in createUser and must remain stable.
-            const updated = await tx.user.update({
-              where: { id: existing.id },
-              data: {
-                username,
-                referralCode,
-                referredBy,
-                joulesBalance: rewardJ,
-                bootstrapped: true,
-              },
-            });
-
-            // Debit treasury, credit new user
-            await tx.user.update({
-              where: { id: TREASURY_USER_ID },
-              data: { joulesBalance: { decrement: rewardJ } },
-            });
-
-            const treasury = await tx.user.findUniqueOrThrow({
-              where: { id: TREASURY_USER_ID },
-              select: { joulesBalance: true },
-            });
-
-            await tx.ledgerEntry.create({
-              data: {
-                userId: TREASURY_USER_ID,
-                entryType: "GENESIS_BONUS",
-                amount: rewardJ.negated(),
-                balanceAfter: treasury.joulesBalance,
-                referenceType: "user",
-                referenceId: updated.id,
-                description: `Genesis bonus outflow for user #${userNumber}`,
-              },
-            });
-
-            await tx.ledgerEntry.create({
-              data: {
-                userId: updated.id,
-                entryType: "GENESIS_BONUS",
-                amount: rewardJ,
-                balanceAfter: updated.joulesBalance,
-                referenceType: "user",
-                referenceId: updated.id,
-                description: `Signup reward (${reward} kJ)`,
-              },
-            });
-
-            return updated;
-          });
-
-          // Walk the referral ancestor chain
-          if (inviter && inviter.id !== newUser.id) {
-            await processReferralChain(inviter.referralCode, newUser.id);
-          } else if (inviter && inviter.id === newUser.id) {
-            logInvalidReferralAttempt(inviter.referralCode, "self_referral_id", newUser.email);
-          }
-        }
-      } catch (e) {
-        console.error("Auth signIn DB error:", e);
-      }
-
-      return true;
+      // All user creation + Joulegram bootstrap (genesis bonus, ledger
+      // entries, referral chain) runs atomically inside adapter.createUser.
+      // This callback is intentionally a pass-through: it fires before
+      // createUser in the email flow, so any bootstrap logic here would
+      // miss first-time signups. Just gate on a present email.
+      return !!user.email;
     },
 
     async jwt({ token, user }) {
