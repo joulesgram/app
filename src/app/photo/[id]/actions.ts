@@ -5,8 +5,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RATING_KJ } from "@/lib/constants";
 import { TREASURY_USER_ID } from "@/lib/integrity";
+import { transferFromBootstrapPool } from "@/lib/pre-scale";
+import { PRE_SCALE } from "@/lib/pre-scale-config";
 
 const ratingCostJ = new Decimal(RATING_KJ).times(1000);
+const rateEarnRewardJ = new Decimal(PRE_SCALE.RATE_EARN_REWARD_J);
 
 export async function submitRating(photoId: string, score: number) {
   const session = await auth();
@@ -77,6 +80,34 @@ await tx.ledgerEntry.create({
         referenceId: r.id,
       },
     });
+
+    // Day 3: flat rate-to-earn. Credit 5 kJ back, capped at 20 per UTC day.
+    // Net cost to user: 0 kJ when under cap. Stake debit above is unchanged.
+    // Note: count-then-insert under Read Committed isolation means two
+    // concurrent ratings from the same user could both observe count=19 and
+    // each insert, briefly overshooting the cap. Acceptable at current scale;
+    // revisit with a unique (userId, utcDate, seq) index if it matters.
+    const todayUtcMidnight = new Date();
+    todayUtcMidnight.setUTCHours(0, 0, 0, 0);
+
+    const earnCountToday = await tx.ledgerEntry.count({
+      where: {
+        userId,
+        entryType: "RATE_EARN_FLAT",
+        createdAt: { gte: todayUtcMidnight },
+      },
+    });
+
+    if (earnCountToday < PRE_SCALE.RATE_EARN_DAILY_CAP) {
+      await transferFromBootstrapPool(
+        tx,
+        userId,
+        rateEarnRewardJ,
+        "RATE_EARN_FLAT",
+        "Flat rate-to-earn reward (5 kJ)"
+      );
+    }
+
     return r;
   });
 
